@@ -1,0 +1,681 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<zabbix_export>
+    <version>7.4</version>
+    <template_groups>
+        <template_group>
+            <uuid>a571c0d144b14fd4a87a9d9b2aa9fcd6</uuid>
+            <name>Templates/Applications</name>
+        </template_group>
+    </template_groups>
+    <templates>
+        <template>
+            <uuid>0465d66f36c94dcbadc00da145c4ab46</uuid>
+            <template>Synology ABB External SingleScript</template>
+            <name>Synology Active Backup for Business (External, Single Script)</name>
+            <description>Template für Synology Active Backup for Business über ein einziges Externalscript (abb.sh) mit Subcommands.
+        Voraussetzung: CSVs lokal am Proxy (z. B. /mnt/synology/monitoring/abb).
+        Benötigte Datei: /usr/lib/zabbix/externalscripts/abb.sh (ausführbar; ABB_CSV_PATH optional).</description>
+            <vendor>
+                <name>Alexander Fox | PlaNet Fox</name>
+                <version>7.4-9</version>
+            </vendor>
+            <groups>
+                <group>
+                    <name>Templates/Applications</name>
+                </group>
+            </groups>
+            <items>
+                <item>
+                    <uuid>579f0251acff4f70beb154db033bb15a</uuid>
+                    <name>ABB Backup rate today</name>
+                    <type>CALCULATED</type>
+                    <key>abb.backup.rate.today</key>
+                    <delay>15m</delay>
+                    <history>30d</history>
+                    <value_type>FLOAT</value_type>
+                    <trends>90d</trends>
+                    <units>%</units>
+                    <params>100*(last(//abb.sh[success_today])/(last(//abb.sh[success_today])+last(//abb.sh[failed_today])+0.0001))</params>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Statistics</value>
+                        </tag>
+                    </tags>
+                </item>
+                <item>
+                    <uuid>4d72af7a48c2445589fc9b5858fd6084</uuid>
+                    <name>ABB Export status (mount + freshness)</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[check,{$ABB.EXPORT.MAXAGE},{$ABB.MOUNTPOINT},{$ABB.EXPECT_REMOTE},{$ABB.EXPECT_FSTYPE}]</key>
+                    <delay>5m</delay>
+                    <history>7d</history>
+                    <valuemap>
+                        <name>ABB Service Status</name>
+                    </valuemap>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Service</value>
+                        </tag>
+                    </tags>
+                    <triggers>
+                        <trigger>
+                            <uuid>47bf7aa8271a4789a69936df5709d5ee</uuid>
+                            <expression>last(/Synology ABB External SingleScript/abb.sh[check,{$ABB.EXPORT.MAXAGE},{$ABB.MOUNTPOINT},{$ABB.EXPECT_REMOTE},{$ABB.EXPECT_FSTYPE}])=1</expression>
+                            <name>ABB: Export script or mount not OK</name>
+                            <priority>AVERAGE</priority>
+                            <manual_close>YES</manual_close>
+                        </trigger>
+                    </triggers>
+                </item>
+                <item>
+                    <uuid>9b306ce6061b46a4bd110541593d6e66</uuid>
+                    <name>ABB Device count</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[device_count]</key>
+                    <delay>30m</delay>
+                    <history>30d</history>
+                    <trends>180d</trends>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Inventory</value>
+                        </tag>
+                    </tags>
+                </item>
+                <item>
+                    <uuid>43901cc059d647a683c2db1920939231</uuid>
+                    <name>ABB Failed devices (count)</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[failed_count]</key>
+                    <delay>5m</delay>
+                    <history>30d</history>
+                    <trends>90d</trends>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Overview</value>
+                        </tag>
+                    </tags>
+                    <triggers>
+                        <trigger>
+                            <uuid>efcc612f0e954d94b559f16f0369aa24</uuid>
+                            <expression>last(/Synology ABB External SingleScript/abb.sh[failed_count])&gt;0</expression>
+                            <name>ABB: {ITEM.LASTVALUE} device(s) in ERROR (last run)</name>
+                            <priority>WARNING</priority>
+                            <manual_close>YES</manual_close>
+                            <dependencies>
+                                <dependency>
+                                    <name>ABB: Export script or mount not OK</name>
+                                    <expression>last(/Synology ABB External SingleScript/abb.sh[check,{$ABB.EXPORT.MAXAGE},{$ABB.MOUNTPOINT},{$ABB.EXPECT_REMOTE},{$ABB.EXPECT_FSTYPE}])=1</expression>
+                                </dependency>
+                            </dependencies>
+                        </trigger>
+                    </triggers>
+                </item>
+                <item>
+                    <uuid>b63af204fd4b4315ac9436f36f432822</uuid>
+                    <name>ABB Failed devices (list)</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[failed_list]</key>
+                    <delay>5m</delay>
+                    <history>7d</history>
+                    <value_type>TEXT</value_type>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Overview</value>
+                        </tag>
+                    </tags>
+                </item>
+                <item>
+                    <uuid>712ec3081b304c3d920d4215319e94bd</uuid>
+                    <name>ABB Failed backups today</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[failed_today]</key>
+                    <delay>10m</delay>
+                    <history>30d</history>
+                    <trends>90d</trends>
+                    <preprocessing>
+                        <step>
+                            <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                            <parameters>
+                                <parameter>3600</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Statistics</value>
+                        </tag>
+                    </tags>
+                    <triggers>
+                        <trigger>
+                            <uuid>5c5ca6944be94e96a4c99a9bd80dc725</uuid>
+                            <expression>last(/Synology ABB External SingleScript/abb.sh[failed_today])&gt;={$ABB.FAILED.THRESHOLD}</expression>
+                            <name>ABB: {ITEM.LASTVALUE} failed backup(s) today</name>
+                            <priority>WARNING</priority>
+                            <manual_close>YES</manual_close>
+                            <dependencies>
+                                <dependency>
+                                    <name>ABB: Export script or mount not OK</name>
+                                    <expression>last(/Synology ABB External SingleScript/abb.sh[check,{$ABB.EXPORT.MAXAGE},{$ABB.MOUNTPOINT},{$ABB.EXPECT_REMOTE},{$ABB.EXPECT_FSTYPE}])=1</expression>
+                                </dependency>
+                            </dependencies>
+                        </trigger>
+                    </triggers>
+                </item>
+                <item>
+                    <uuid>969df38b110d482887f8ab27a1739bcd</uuid>
+                    <name>ABB Not-OK (Error/Warning) – count</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[notok_count]</key>
+                    <delay>5m</delay>
+                    <history>30d</history>
+                    <trends>90d</trends>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Overview</value>
+                        </tag>
+                    </tags>
+                </item>
+                <item>
+                    <uuid>4f8e18c5c17b4fe880b0c89181b86b27</uuid>
+                    <name>ABB Not-OK (Error/Warning) – list</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[notok_list]</key>
+                    <delay>5m</delay>
+                    <history>7d</history>
+                    <value_type>TEXT</value_type>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Overview</value>
+                        </tag>
+                    </tags>
+                </item>
+                <item>
+                    <uuid>3216cd8de31d4b50bea51533f16c21ea</uuid>
+                    <name>ABB Successful backups today</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[success_today]</key>
+                    <delay>10m</delay>
+                    <history>30d</history>
+                    <trends>90d</trends>
+                    <preprocessing>
+                        <step>
+                            <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                            <parameters>
+                                <parameter>3600</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Statistics</value>
+                        </tag>
+                    </tags>
+                </item>
+                <item>
+                    <uuid>4ea155fbc5994004b551b54a5a2cd55c</uuid>
+                    <name>ABB Sum of backup bytes (last run)</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[sum_bytes]</key>
+                    <delay>30m</delay>
+                    <history>30d</history>
+                    <trends>180d</trends>
+                    <units>B</units>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Capacity</value>
+                        </tag>
+                    </tags>
+                </item>
+                <item>
+                    <uuid>da06b2e9b3a946a4bcf1e6b476328fa8</uuid>
+                    <name>ABB Sum of repo bytes</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[sum_repo_bytes]</key>
+                    <delay>30m</delay>
+                    <history>30d</history>
+                    <trends>180d</trends>
+                    <units>B</units>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Capacity</value>
+                        </tag>
+                    </tags>
+                </item>
+                <item>
+                    <uuid>5e5da4836a3541399cf56a009f69ab16</uuid>
+                    <name>ABB Warnings (count)</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[warn_count]</key>
+                    <delay>5m</delay>
+                    <history>30d</history>
+                    <trends>90d</trends>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Overview</value>
+                        </tag>
+                    </tags>
+                    <triggers>
+                        <trigger>
+                            <uuid>e549e060de3f4247bc75e59bffa39d8c</uuid>
+                            <expression>last(/Synology ABB External SingleScript/abb.sh[warn_count])&gt;0</expression>
+                            <name>ABB: {ITEM.LASTVALUE} device(s) in WARNING (last run)</name>
+                            <priority>INFO</priority>
+                            <manual_close>YES</manual_close>
+                            <dependencies>
+                                <dependency>
+                                    <name>ABB: Export script or mount not OK</name>
+                                    <expression>last(/Synology ABB External SingleScript/abb.sh[check,{$ABB.EXPORT.MAXAGE},{$ABB.MOUNTPOINT},{$ABB.EXPECT_REMOTE},{$ABB.EXPECT_FSTYPE}])=1</expression>
+                                </dependency>
+                            </dependencies>
+                        </trigger>
+                    </triggers>
+                </item>
+            </items>
+            <discovery_rules>
+                <discovery_rule>
+                    <uuid>f185102879ac42409753ae15d436b406</uuid>
+                    <name>Active Backup Device Discovery (Single Script)</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[discovery]</key>
+                    <item_prototypes>
+                        <item_prototype>
+                            <uuid>23cf7ac7ef7d44e5a2f9470d4752c556</uuid>
+                            <name>ABB [{#HOSTNAME}] backup bytes</name>
+                            <type>EXTERNAL</type>
+                            <key>abb.sh[bytes,{#DEVICEID}]</key>
+                            <delay>5m</delay>
+                            <history>30d</history>
+                            <trends>90d</trends>
+                            <units>B</units>
+                        </item_prototype>
+                        <item_prototype>
+                            <uuid>8ca76b17db5e46f38b7c00947e202722</uuid>
+                            <name>ABB [{#HOSTNAME}] backup duration</name>
+                            <type>EXTERNAL</type>
+                            <key>abb.sh[duration,{#DEVICEID}]</key>
+                            <delay>5m</delay>
+                            <history>30d</history>
+                            <trends>90d</trends>
+                            <units>s</units>
+                            <trigger_prototypes>
+                                <trigger_prototype>
+                                    <uuid>7493a4b709d546b1bf2a8050a86230d2</uuid>
+                                    <expression>last(/Synology ABB External SingleScript/abb.sh[duration,{#DEVICEID}])&gt;={$ABB.BACKUP.MAX.DURATION}</expression>
+                                    <name>ABB [{#HOSTNAME}]: backup duration unusually long ({ITEM.LASTVALUE})</name>
+                                    <priority>WARNING</priority>
+                                    <manual_close>YES</manual_close>
+                                    <dependencies>
+                                        <dependency>
+                                            <name>ABB: Export script or mount not OK</name>
+                                            <expression>last(/Synology ABB External SingleScript/abb.sh[check,{$ABB.EXPORT.MAXAGE},{$ABB.MOUNTPOINT},{$ABB.EXPECT_REMOTE},{$ABB.EXPECT_FSTYPE}])=1</expression>
+                                        </dependency>
+                                    </dependencies>
+                                </trigger_prototype>
+                            </trigger_prototypes>
+                        </item_prototype>
+                        <item_prototype>
+                            <uuid>04c8e64b879946e0a1f7a38e63eab618</uuid>
+                            <name>ABB [{#HOSTNAME}] age since last success</name>
+                            <type>EXTERNAL</type>
+                            <key>abb.sh[lastsuccess_age,{#DEVICEID}]</key>
+                            <delay>10m</delay>
+                            <history>30d</history>
+                            <trends>90d</trends>
+                            <units>s</units>
+                            <trigger_prototypes>
+                                <trigger_prototype>
+                                    <uuid>6a0137fdce054e1aae87f97aea49a36f</uuid>
+                                    <expression>last(/Synology ABB External SingleScript/abb.sh[lastsuccess_age,{#DEVICEID}])&gt;={$ABB.BACKUP.MAX.AGE}</expression>
+                                    <name>ABB [{#HOSTNAME}]: last successful backup too old ({ITEM.LASTVALUE})</name>
+                                    <priority>HIGH</priority>
+                                    <manual_close>YES</manual_close>
+                                    <dependencies>
+                                        <dependency>
+                                            <name>ABB: Export script or mount not OK</name>
+                                            <expression>last(/Synology ABB External SingleScript/abb.sh[check,{$ABB.EXPORT.MAXAGE},{$ABB.MOUNTPOINT},{$ABB.EXPECT_REMOTE},{$ABB.EXPECT_FSTYPE}])=1</expression>
+                                        </dependency>
+                                        <dependency>
+                                            <name>ABB [{#HOSTNAME}]: backup ERROR (Status=4)</name>
+                                            <expression>last(/Synology ABB External SingleScript/abb.sh[status,{#DEVICEID}])=4</expression>
+                                        </dependency>
+                                    </dependencies>
+                                </trigger_prototype>
+                            </trigger_prototypes>
+                        </item_prototype>
+                        <item_prototype>
+                            <uuid>6fa4f0a65c1047eea38940ddc1037123</uuid>
+                            <name>ABB [{#HOSTNAME}] repo bytes</name>
+                            <type>EXTERNAL</type>
+                            <key>abb.sh[repo_bytes,{#DEVICEID}]</key>
+                            <delay>30m</delay>
+                            <history>30d</history>
+                            <trends>180d</trends>
+                            <units>B</units>
+                        </item_prototype>
+                        <item_prototype>
+                            <uuid>3014de969874480285d531b821b00b6c</uuid>
+                            <name>ABB [{#HOSTNAME}] status</name>
+                            <type>EXTERNAL</type>
+                            <key>abb.sh[status,{#DEVICEID}]</key>
+                            <delay>5m</delay>
+                            <history>30d</history>
+                            <trends>90d</trends>
+                            <valuemap>
+                                <name>ABB Backup Status</name>
+                            </valuemap>
+                            <trigger_prototypes>
+                                <trigger_prototype>
+                                    <uuid>4dcaecf98a0c443e9303312fb288ddc9</uuid>
+                                    <expression>last(/Synology ABB External SingleScript/abb.sh[status,{#DEVICEID}])=4</expression>
+                                    <name>ABB [{#HOSTNAME}]: backup ERROR (Status=4)</name>
+                                    <priority>HIGH</priority>
+                                    <manual_close>YES</manual_close>
+                                    <dependencies>
+                                        <dependency>
+                                            <name>ABB: Export script or mount not OK</name>
+                                            <expression>last(/Synology ABB External SingleScript/abb.sh[check,{$ABB.EXPORT.MAXAGE},{$ABB.MOUNTPOINT},{$ABB.EXPECT_REMOTE},{$ABB.EXPECT_FSTYPE}])=1</expression>
+                                        </dependency>
+                                    </dependencies>
+                                </trigger_prototype>
+                                <trigger_prototype>
+                                    <uuid>b75e92be27664830af0da47a6783dc9a</uuid>
+                                    <expression>last(/Synology ABB External SingleScript/abb.sh[status,{#DEVICEID}])=5</expression>
+                                    <name>ABB [{#HOSTNAME}]: backup WARNING (Status=5)</name>
+                                    <priority>WARNING</priority>
+                                    <manual_close>YES</manual_close>
+                                    <dependencies>
+                                        <dependency>
+                                            <name>ABB: Export script or mount not OK</name>
+                                            <expression>last(/Synology ABB External SingleScript/abb.sh[check,{$ABB.EXPORT.MAXAGE},{$ABB.MOUNTPOINT},{$ABB.EXPECT_REMOTE},{$ABB.EXPECT_FSTYPE}])=1</expression>
+                                        </dependency>
+                                    </dependencies>
+                                </trigger_prototype>
+                            </trigger_prototypes>
+                        </item_prototype>
+                    </item_prototypes>
+                </discovery_rule>
+            </discovery_rules>
+            <macros>
+                <macro>
+                    <macro>{$ABB.BACKUP.MAX.AGE}</macro>
+                    <value>129600</value>
+                </macro>
+                <macro>
+                    <macro>{$ABB.BACKUP.MAX.DURATION}</macro>
+                    <value>43200</value>
+                </macro>
+                <macro>
+                    <macro>{$ABB.CSV.PATH}</macro>
+                    <value>/mnt/synology/monitoring/abb</value>
+                </macro>
+                <macro>
+                    <macro>{$ABB.EXPECT_FSTYPE}</macro>
+                    <value>nfs</value>
+                </macro>
+                <macro>
+                    <macro>{$ABB.EXPECT_REMOTE}</macro>
+                    <value>192.168.33.2:/volume1/monitoring</value>
+                </macro>
+                <macro>
+                    <macro>{$ABB.EXPORT.MAXAGE}</macro>
+                    <value>900</value>
+                </macro>
+                <macro>
+                    <macro>{$ABB.FAILED.THRESHOLD}</macro>
+                    <value>1</value>
+                </macro>
+                <macro>
+                    <macro>{$ABB.MOUNTPOINT}</macro>
+                    <value>/mnt/synology/monitoring</value>
+                </macro>
+            </macros>
+            <dashboards>
+                <dashboard>
+                    <uuid>c8f5d2b4c6e741a8b9c3d5f6e7a8b9c1</uuid>
+                    <name>ABB Monitoring</name>
+                    <pages>
+                        <page>
+                            <name>Overview</name>
+                            <widgets>
+                                <widget>
+                                    <type>tophosts</type>
+                                    <width>36</width>
+                                    <height>5</height>
+                                    <fields>
+                                        <field>
+                                            <type>INTEGER</type>
+                                            <name>columns.0.data</name>
+                                            <value>1</value>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>columns.0.item</name>
+                                            <value>ABB Failed devices (count)</value>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>columns.0.name</name>
+                                            <value>Failed</value>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>columns.0.text</name>
+                                            <value/>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>reference</name>
+                                            <value>XWTMI</value>
+                                        </field>
+                                    </fields>
+                                </widget>
+                                <widget>
+                                    <type>svggraph</type>
+                                    <y>5</y>
+                                    <width>36</width>
+                                    <height>5</height>
+                                    <fields>
+                                        <field>
+                                            <type>INTEGER</type>
+                                            <name>ds.0.color_palette</name>
+                                            <value>0</value>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>ds.0.items.0</name>
+                                            <value>ABB Sum of backup bytes (last run)</value>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>ds.1.color.0</name>
+                                            <value>FFD54F</value>
+                                        </field>
+                                        <field>
+                                            <type>INTEGER</type>
+                                            <name>ds.1.dataset_type</name>
+                                            <value>0</value>
+                                        </field>
+                                        <field>
+                                            <type>ITEM</type>
+                                            <name>ds.1.itemids.0</name>
+                                            <value>
+                                                <host>Synology ABB External SingleScript</host>
+                                                <key>abb.sh[sum_repo_bytes]</key>
+                                            </value>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>reference</name>
+                                            <value>GHSII</value>
+                                        </field>
+                                        <field>
+                                            <type>INTEGER</type>
+                                            <name>righty</name>
+                                            <value>0</value>
+                                        </field>
+                                    </fields>
+                                </widget>
+                                <widget>
+                                    <type>item</type>
+                                    <name>State</name>
+                                    <x>36</x>
+                                    <width>8</width>
+                                    <fields>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>down_color</name>
+                                            <value>FF0000</value>
+                                        </field>
+                                        <field>
+                                            <type>ITEM</type>
+                                            <name>itemid.0</name>
+                                            <value>
+                                                <host>Synology ABB External SingleScript</host>
+                                                <key>abb.sh[failed_today]</key>
+                                            </value>
+                                        </field>
+                                        <field>
+                                            <type>INTEGER</type>
+                                            <name>show.0</name>
+                                            <value>2</value>
+                                        </field>
+                                        <field>
+                                            <type>INTEGER</type>
+                                            <name>show.1</name>
+                                            <value>4</value>
+                                        </field>
+                                    </fields>
+                                </widget>
+                            </widgets>
+                        </page>
+                    </pages>
+                </dashboard>
+            </dashboards>
+            <valuemaps>
+                <valuemap>
+                    <uuid>c5d4a16a15d34aefa270e814979e7663</uuid>
+                    <name>ABB Backup Status</name>
+                    <mappings>
+                        <mapping>
+                            <value>1</value>
+                            <newvalue>Running</newvalue>
+                        </mapping>
+                        <mapping>
+                            <value>2</value>
+                            <newvalue>Success</newvalue>
+                        </mapping>
+                        <mapping>
+                            <value>3</value>
+                            <newvalue>Aborted</newvalue>
+                        </mapping>
+                        <mapping>
+                            <value>4</value>
+                            <newvalue>Error</newvalue>
+                        </mapping>
+                        <mapping>
+                            <value>5</value>
+                            <newvalue>Warning</newvalue>
+                        </mapping>
+                        <mapping>
+                            <value>8</value>
+                            <newvalue>Partial</newvalue>
+                        </mapping>
+                        <mapping>
+                            <value>99</value>
+                            <newvalue>Unknown</newvalue>
+                        </mapping>
+                    </mappings>
+                </valuemap>
+                <valuemap>
+                    <uuid>403072c927e0479880a4c3627906d00d</uuid>
+                    <name>ABB Service Status</name>
+                    <mappings>
+                        <mapping>
+                            <value>0</value>
+                            <newvalue>OK</newvalue>
+                        </mapping>
+                        <mapping>
+                            <value>1</value>
+                            <newvalue>Problem</newvalue>
+                        </mapping>
+                    </mappings>
+                </valuemap>
+            </valuemaps>
+        </template>
+    </templates>
+    <triggers>
+        <trigger>
+            <uuid>b823e7438387412a8d220ccc1853e446</uuid>
+            <expression>last(/Synology ABB External SingleScript/abb.backup.rate.today)&lt;90 and ( last(/Synology ABB External SingleScript/abb.sh[success_today]) + last(/Synology ABB External SingleScript/abb.sh[failed_today]) )&gt;0</expression>
+            <name>ABB: backup success rate today &lt; 90%</name>
+            <priority>WARNING</priority>
+            <manual_close>YES</manual_close>
+            <dependencies>
+                <dependency>
+                    <name>ABB: Export script or mount not OK</name>
+                    <expression>last(/Synology ABB External SingleScript/abb.sh[check,{$ABB.EXPORT.MAXAGE},{$ABB.MOUNTPOINT},{$ABB.EXPECT_REMOTE},{$ABB.EXPECT_FSTYPE}])=1</expression>
+                </dependency>
+            </dependencies>
+        </trigger>
+    </triggers>
+</zabbix_export>
