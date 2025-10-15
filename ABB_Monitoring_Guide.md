@@ -1,202 +1,173 @@
+# 🧩 Synology Active Backup for Business – Zabbix Monitoring (Single Script)
 
-# 📘 Dokumentation – Monitoring von Synology Active Backup for Business (ABB)
-
-**Version:** 1.0  
-**Stand:** Oktober 2025  
-**Kompatibel mit:** Zabbix 7.4+ & Synology DSM 7.x (ABB)
+Diese Dokumentation beschreibt die vollständige Einrichtung des **Synology ABB Monitorings** über ein **einheitliches Zabbix-External-Script (`abb.sh`)**.  
+Das Setup basiert auf einem **NAS-Export (CSV)**, der per NFS vom **Zabbix Proxy oder Server** gelesen wird.
 
 ---
 
-## 🧩 Ziel
+## ⚙️ Systemübersicht
 
-Dieses Setup überwacht **Synology Active Backup for Business (ABB)** über CSV-Exports der ABB-Tasks,
-die auf dem Zabbix-Proxy eingebunden werden.  
-Erfasst werden:
-
-- Erfolgsrate der Backups
-- Geräteliste & -Status
-- Backup-Dauer & -Größe je Host
-- Gesamtvolumen & Repositorygröße
-- Export-Status und Fehlermeldungen
-
----
-
-## ⚙️ Architekturüberblick
-
-```
-[ Synology NAS ]
-     │
-     │ (exportiert CSVs via NFS)
-     ▼
-[ Zabbix Proxy ]
-     ├── /mnt/synology/monitoring/abb/
-     │     ├── ActiveBackupExport.csv
-     │     └── ActiveBackupHostExport.csv
-     │
-     └── /usr/lib/zabbix/externalscripts/abb.sh
-          ↑
-          └── Zabbix Server ruft Items per Proxy ab
+```text
++-----------------+                 +---------------------------+
+| Synology NAS    |                 | Zabbix Proxy / Server     |
+|-----------------|                 |---------------------------|
+| - abb_export.sh |  --> NFS Mount  | - abb.sh (External Script)|
+| - abb_enhance.. |                 | - Template: ABB Single    |
+| - CSV unter /volume1/monitoring/abb/ | - Items, LLD, Triggers  |
++-----------------+                 +---------------------------+
 ```
 
 ---
 
-## 📦 1. Installation auf dem Synology NAS
+## 🧠 Voraussetzungen
 
-### 1.1 Voraussetzungen
-- Active Backup for Business (ABB) installiert und funktionierende Jobs
-- SSH-Zugang als Admin
+### Auf dem **NAS**
+- DSM 7.x mit installiertem **Active Backup for Business**
+- SSH-Zugriff aktiviert
+- Benutzer `zabbix` mit Schreibrecht auf `/volume1/monitoring/abb`
 
-### 1.2 Skript-Export
-`/volume1/scripts/abb_export.sh`
+### Auf dem **Zabbix Proxy / Server**
+- Zabbix ≥ 7.2  
+- Paket `jq` installiert (`apt install jq`)  
+- NFS-Client (`apt install nfs-common`)  
+- Mountpoint `/mnt/synology/monitoring`  
+- Datei `/usr/lib/zabbix/externalscripts/abb.sh`
+
+---
+
+## 📦 Installation auf dem NAS
+
+### 1️⃣ Verzeichnisstruktur
+
 ```bash
-#!/bin/bash
-ABB_DIR="/volume1/monitoring/abb"
-mkdir -p "$ABB_DIR"
-/var/packages/ActiveBackupforBusiness/target/tool/ActiveBackupTool --list-all > "$ABB_DIR/ActiveBackupExport.csv"
-/var/packages/ActiveBackupforBusiness/target/tool/ActiveBackupTool --list-hosts > "$ABB_DIR/ActiveBackupHostExport.csv"
-```
-
-Optional:
-`/volume1/scripts/abb_export_enhance_last_success.sh`
-
-### 1.3 Aufgabenplanung
-DSM → **Aufgabenplaner → Benutzerdefiniertes Skript**
-```
-/bin/sh -c 'ABB_DIR=/volume1/monitoring/abb /volume1/scripts/abb_export.sh && /volume1/scripts/abb_export_enhance_last_success.sh >> /volume1/monitoring/abb/export.log 2>&1'
-```
-
-### 1.4 NFS-Export
-DSM → **Dateidienste → NFS**
-```
-Pfad: /volume1/monitoring
-Host: Zabbix Proxy IP
-Rechte: Lesen/Schreiben, no_root_squash
+/volume1/monitoring/
+├── abb/
+│   ├── ActiveBackupExport.csv
+│   ├── export.log
+└── scripts/
+    ├── abb_export.sh
+    ├── abb_export_enhance_last_success.sh
 ```
 
 ---
 
-## 🧩 2. Einrichtung auf dem Zabbix Proxy
+### 2️⃣ NAS-Skripte
 
-### 2.1 NFS Mount
-`/etc/fstab`
-```
-192.168.33.2:/volume1/monitoring /mnt/synology/monitoring nfs defaults,_netdev 0 0
-```
+#### `/volume1/monitoring/scripts/abb_export.sh`
 
-### 2.2 Externalscript installieren
-`/usr/lib/zabbix/externalscripts/abb.sh`
 ```bash
 #!/bin/sh
+set -eu
+ABB_DIR="${ABB_DIR:-/volume1/monitoring/abb}"
+LOG="$ABB_DIR/export.log"
+
+echo "$(date '+%F %T') [INFO] ABB Export gestartet" >> "$LOG"
+
+/usr/syno/bin/activebackup export host > "$ABB_DIR/ActiveBackupHostExport.csv"
+/usr/syno/bin/activebackup export stats > "$ABB_DIR/ActiveBackupStats.csv"
+/usr/syno/bin/activebackup export device-stats > "$ABB_DIR/ActiveBackupDeviceStats.csv"
+
+awk -F, -v OFS=, 'NR>1 {print $1,$2,$3,$4,$5,$6}'   "$ABB_DIR/ActiveBackupHostExport.csv" > "$ABB_DIR/ActiveBackupExport.csv"
+
+echo "$(date '+%F %T') [INFO] ABB Export beendet" >> "$LOG"
+```
+
+#### `/volume1/monitoring/scripts/abb_export_enhance_last_success.sh`
+
+```bash
+#!/bin/sh
+set -eu
+ABB_DIR="${ABB_DIR:-/volume1/monitoring/abb}"
+EXPORT="$ABB_DIR/ActiveBackupExport.csv"
+BACKUP="$EXPORT.bak.$(date +%s)"
+
+cp -a "$EXPORT" "$BACKUP" 2>/dev/null || true
+
+awk -F, -v OFS=, '
+  NR==1 {print "DEVICEID","HOSTNAME","STATUS","BYTES","DURATION","TS","LAST_SUCCESS_TS"; next}
+  NR>1  {print $1,$2,$3,$4,$5,$6,0}
+' "$BACKUP" > "$EXPORT.tmp" && mv "$EXPORT.tmp" "$EXPORT"
+
+chgrp -R zabbix "$ABB_DIR"
+chmod 2775 "$ABB_DIR" || true
+chmod 640 "$ABB_DIR"/*.csv || true
+
+echo "OK: enhanced $EXPORT"
+```
+
+---
+
+### 3️⃣ Taskplaner (DSM GUI oder Cron)
+
+```bash
+/volume1/monitoring/scripts/abb_export.sh && /volume1/monitoring/scripts/abb_export_enhance_last_success.sh
+```
+
+---
+
+## 🖧 NFS-Freigabe
+
+DSM:
+- Freigabe: `/volume1/monitoring`
+- Erlaubte Hosts: Zabbix Proxy IP
+- Rechte: `rw`, `no_root_squash`
+- Mount-Test:
+```bash
+mount -t nfs 192.168.33.2:/volume1/monitoring /mnt/synology/monitoring
+```
+
+---
+
+## 🧩 Installation auf dem Zabbix Proxy
+
+```bash
+#!/bin/sh
+set -eu
 CSV="${ABB_CSV_PATH:-/mnt/synology/monitoring/abb}"
-EXPORT="$CSV/ActiveBackupExport.csv"
-HOSTS="$CSV/ActiveBackupHostExport.csv"
+CSV_FILE="$CSV/ActiveBackupExport.csv"
+DEBUG="${ABB_DEBUG:-0}"
+log() { [ "$DEBUG" = "1" ] && echo "DEBUG: $*" >&2; }
 
-check() {
-  MAX="${1:-900}"
-  MP="${2:-/mnt/synology/monitoring}"
-  REM="${3:-192.168.33.2:/volume1/monitoring}"
-  FST="${4:-nfs}"
-  SRC=$(findmnt -no SOURCE "$MP" 2>/dev/null)
-  TYP=$(findmnt -no FSTYPE "$MP" 2>/dev/null)
-  test "$SRC" = "$REM" || exit 1
-  test "$TYP" = "$FST" || exit 1
-  test -r "$EXPORT" || exit 1
-  now=$(date +%s)
-  mtime=$(stat -c %Y "$EXPORT" 2>/dev/null || echo 0)
-  age=$((now - mtime))
-  [ "$age" -le "$MAX" ] || exit 1
-  echo 0
-}
-
-status()         { awk -F, -v id="$1" 'NR>1 && $1==id{print $3}' "$EXPORT"; }
-bytes()          { awk -F, -v id="$1" 'NR>1 && $1==id{print $4}' "$EXPORT"; }
-duration()       { awk -F, -v id="$1" 'NR>1 && $1==id{print $5}' "$EXPORT"; }
-lastsuccess_age(){ awk -F, -v id="$1" 'NR>1 && $1==id{print int(systime()-$7)}' "$EXPORT"; }
-
-case "$1" in
-  check) shift; check "$@";;
-  status|bytes|duration|lastsuccess_age) shift; "$1" "$@";;
-  *) echo "Usage: abb.sh check|status|bytes|duration|lastsuccess_age"; exit 1;;
+case "${1:-}" in
+  check)
+    MAXAGE="${2:-900}"; MOUNT="${3:-/mnt/synology/monitoring}"; REMOTE="${4:-}"
+    SRC_LINE=$(findmnt -rno SOURCE,FSTYPE,TARGET -T "$CSV_FILE" | tail -n1 || true)
+    SRC=$(echo "$SRC_LINE" | awk '{print $1}'); FST=$(echo "$SRC_LINE" | awk '{print $2}')
+    AGE=$(( $(date +%s) - $(stat -c %Y "$CSV_FILE" 2>/dev/null || echo 0) ))
+    log "SRC=$SRC FST=$FST AGE=$AGE"
+    [ -r "$CSV_FILE" ] || { log "not readable"; echo 1; exit 0; }
+    [ "$FST" = "autofs" ] || [ "$SRC" = "$REMOTE" ] || { log "SRC mismatch"; echo 1; exit 0; }
+    [ "$AGE" -le "$MAXAGE" ] || { log "file too old"; echo 1; exit 0; }
+    echo 0
+    ;;
+  discovery)
+    awk -F, 'NR>1 {printf "%s{"{#DEVICEID}":"%s","{#HOSTNAME}":"%s"}",(NR>2?",":""),$1,$2} END{print "]"}'       <(echo "[") "$CSV_FILE"
+    ;;
+  status)
+    awk -F, -v id="$2" 'NR>1 && $1==id {print $3}' "$CSV_FILE"
+    ;;
+  bytes)
+    awk -F, -v id="$2" 'NR>1 && $1==id {print $4}' "$CSV_FILE"
+    ;;
+  duration)
+    awk -F, -v id="$2" 'NR>1 && $1==id {print $5}' "$CSV_FILE"
+    ;;
+  lastsuccess_age)
+    now=$(date +%s)
+    awk -F, -v id="$2" -v now="$now" 'NR>1 && $1==id {diff=now-$7;if(diff<0)diff=0;print diff}' "$CSV_FILE"
+    ;;
+  *)
+    echo "Usage: $0 {check MAXAGE MOUNT REMOTE FSTYPE | discovery | status ID | bytes ID | duration ID | lastsuccess_age ID}" >&2
+    exit 1
+    ;;
 esac
 ```
 
-Rechte:
-```bash
-chown zabbix:zabbix /usr/lib/zabbix/externalscripts/abb.sh
-chmod 755 /usr/lib/zabbix/externalscripts/abb.sh
-```
-
-Test:
-```bash
-sudo -u zabbix /usr/lib/zabbix/externalscripts/abb.sh check 900
-sudo -u zabbix /usr/lib/zabbix/externalscripts/abb.sh status 11
-```
-
 ---
 
-## 🧰 3. Einrichtung im Zabbix Server
+## 🧾 Version & Credits
 
-### 3.1 Template importieren
-Template: `Synology_ABB_External_SingleScript.xml`
-
-Import → **Update existing** aktivieren  
-Pfad: `Templates/Applications`
-
-### 3.2 Makros prüfen
-| Makro | Beschreibung | Beispiel |
-|-------|---------------|----------|
-| `{$ABB.CSV.PATH}` | Pfad zum CSV | `/mnt/synology/monitoring/abb` |
-| `{$ABB.MOUNTPOINT}` | Mountpunkt | `/mnt/synology/monitoring` |
-| `{$ABB.EXPORT.MAXAGE}` | Max. Alter in Sekunden | `900` |
-| `{$ABB.EXPECT_REMOTE}` | NFS-Quelle | `192.168.33.2:/volume1/monitoring` |
-| `{$ABB.EXPECT_FSTYPE}` | Dateisystem | `nfs` |
-
-### 3.3 Low-Level-Discovery
-Erstellt automatisch Items für jedes ABB-Device (Status, Dauer, Bytes, etc.)
-
----
-
-## 📊 4. Graph / Dashboard
-
-**Graph:**  
-`ABB Capacity – Total vs Repo (bytes)`  
-zeigt `sum_bytes` (grün, links) und `sum_repo_bytes` (blau, rechts)  
-zur Kapazitätsentwicklung über 30–90 Tage.
-
----
-
-## ✅ 5. Tests
-
-Proxy-Test:
-```bash
-sudo -u zabbix /usr/lib/zabbix/externalscripts/abb.sh check 900
-sudo -u zabbix /usr/lib/zabbix/externalscripts/abb.sh status 1
-```
-
-GUI-Test:  
-**Monitoring → Latest data → Template Synology ABB External SingleScript**
-
----
-
-## 🔍 Fehlerbehebung
-
-| Problem | Ursache | Lösung |
-|----------|----------|--------|
-| `ABB Export Status = Problem (1)` | NFS nicht gemountet / CSV zu alt | Proxy: `abb.sh check 900` |
-| `Status=99` | CSV fehlerhaft | ABB-Export prüfen |
-| Keine Geräte | Discovery nicht gelaufen | Manuell triggern |
-| `Permission denied` | falsche NFS-Rechte | DSM: no_root_squash |
-
----
-
-## 📁 Struktur (Proxy)
-
-```
-/usr/lib/zabbix/externalscripts/abb.sh
-/mnt/synology/monitoring/abb/
-  ├── ActiveBackupExport.csv
-  ├── ActiveBackupHostExport.csv
-  └── export.log
-```
-
----
+**Maintainer:** Alexander Fox | PlaNet Fox with Love ❤️  
+**Kompatibel mit:** Zabbix 7.2 – 7.4  
+**Stand:** Oktober 2025  
+**Lizenz:** MIT  
