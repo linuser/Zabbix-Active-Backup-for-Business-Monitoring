@@ -1,4 +1,3 @@
-umask 022
 #!/bin/sh
 # /volume1/scripts/abb_export.sh
 # Exportiert ABB-Daten aus den SQLite-DBs nach CSV für Zabbix.
@@ -7,6 +6,8 @@ umask 022
 ###############################################################################
 # Konfiguration
 ###############################################################################
+umask 022
+
 CSV_PATH="/volume1/monitoring/abb"     # Zielverzeichnis (entspricht {$CSV.PATH})
 DB_DIR="/volume1/@ActiveBackup"        # ABB-DB-Pfad (activity.db, config.db)
 SQLITE="/usr/bin/sqlite3"              # Pfad zu sqlite3
@@ -132,7 +133,7 @@ TMP_STATS="${CSV_STATS}.tmp.$$"
   " | awk '{gsub(/\r$/,""); print}'
 } > "$TMP_STATS" && write_atomic "$CSV_STATS" "$TMP_STATS"
 
-chmod 644 /volume1/monitoring/abb/*.csv 2>/dev/null || true
+chmod 644 "$ABB_DIR"/*.csv 2>/dev/null || true
 ###############################################################################
 # Ende
 ###############################################################################
