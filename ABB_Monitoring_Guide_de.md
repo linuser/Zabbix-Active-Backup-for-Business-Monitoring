@@ -97,4 +97,4 @@ sudo sed -i 's/\r$//' /usr/lib/zabbix/externalscripts/{abb.sh,abb-enh.sh}
 
 ---
 
-*(Die weiteren Kapitel zu Items, Debug und Sicherheit bleiben identisch zur vorherigen Version.)*
+
