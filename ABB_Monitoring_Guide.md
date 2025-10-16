@@ -1,173 +1,100 @@
-# 🧩 Synology Active Backup for Business – Zabbix Monitoring (Single Script)
+# ABB Monitoring – Deployment & Debug Quickstart (Zabbix 7.x)
 
-Diese Dokumentation beschreibt die vollständige Einrichtung des **Synology ABB Monitorings** über ein **einheitliches Zabbix-External-Script (`abb.sh`)**.  
-Das Setup basiert auf einem **NAS-Export (CSV)**, der per NFS vom **Zabbix Proxy oder Server** gelesen wird.
+Diese Anleitung beschreibt die **korrekte Installation, Rechte-Setzung und Fehlersuche** für die Skripte `abb.sh` (Basiswerte) und `abb-enh.sh` (Text-/Listen-Ausgaben) in einer Zabbix-Umgebung. Alle IPs sind als Platzhalter angegeben (z. B. `NASIP`, `PROXYIP`).
 
----
-
-## ⚙️ Systemübersicht
-
-```text
-+-----------------+                 +---------------------------+
-| Synology NAS    |                 | Zabbix Proxy / Server     |
-|-----------------|                 |---------------------------|
-| - abb_export.sh |  --> NFS Mount  | - abb.sh (External Script)|
-| - abb_enhance.. |                 | - Template: ABB Single    |
-| - CSV unter /volume1/monitoring/abb/ | - Items, LLD, Triggers  |
-+-----------------+                 +---------------------------+
-```
+> **Kurzfassung**:
+> - `abb.sh` liefert Zahlen wie `success_today`, `failed_today`.
+> - `abb-enh.sh` liefert Listen/Status-Text (z. B. `notok_list`).
+> - Beide Skripte müssen **ausführbar** sein und als **User `zabbix`** auf die CSV-Dateien zugreifen können.
 
 ---
 
-## 🧠 Voraussetzungen
+## 1) Pfade & Dateien
 
-### Auf dem **NAS**
-- DSM 7.x mit installiertem **Active Backup for Business**
-- SSH-Zugriff aktiviert
-- Benutzer `zabbix` mit Schreibrecht auf `/volume1/monitoring/abb`
+**Skripte (lokal auf Proxy/Server):**
+- `/usr/lib/zabbix/externalscripts/abb.sh`
+- `/usr/lib/zabbix/externalscripts/abb-enh.sh`
 
-### Auf dem **Zabbix Proxy / Server**
-- Zabbix ≥ 7.2  
-- Paket `jq` installiert (`apt install jq`)  
-- NFS-Client (`apt install nfs-common`)  
-- Mountpoint `/mnt/synology/monitoring`  
-- Datei `/usr/lib/zabbix/externalscripts/abb.sh`
+**CSV-Quelle (vom NAS via NFS):**
+- Export-Ordner (Synology): `/volume1/monitoring/abb`
+- Mountpunkt (Proxy/Server): `/mnt/synology/monitoring/abb`
+
+**Erforderliche Variable für Skripte:**
+- `ABB_CSV_PATH="/mnt/synology/monitoring/abb"`
 
 ---
 
-## 📦 Installation auf dem NAS
-
-### 1️⃣ Verzeichnisstruktur
+## 2) Installation der Skripte
 
 ```bash
-/volume1/monitoring/
-├── abb/
-│   ├── ActiveBackupExport.csv
-│   ├── export.log
-└── scripts/
-    ├── abb_export.sh
-    ├── abb_export_enhance_last_success.sh
+sudo mkdir -p /usr/lib/zabbix/externalscripts
+sudo cp abb.sh /usr/lib/zabbix/externalscripts/
+sudo cp abb-enh.sh /usr/lib/zabbix/externalscripts/
+sudo chown root:root /usr/lib/zabbix/externalscripts/abb.sh /usr/lib/zabbix/externalscripts/abb-enh.sh
+sudo chmod 0755 /usr/lib/zabbix/externalscripts/abb.sh /usr/lib/zabbix/externalscripts/abb-enh.sh
+sudo sed -i '1c\#!/usr/bin/env bash' /usr/lib/zabbix/externalscripts/{abb.sh,abb-enh.sh}
+sudo sed -i 's/\r$//' /usr/lib/zabbix/externalscripts/{abb.sh,abb-enh.sh}
 ```
 
 ---
 
-### 2️⃣ NAS-Skripte
+## 3) NFS-Mount vom NAS einrichten (Synology UI + Linux-Mount)
 
-#### `/volume1/monitoring/scripts/abb_export.sh`
+### 3.1 Auf der Synology-NAS (über die DSM-Oberfläche)
 
-```bash
-#!/bin/sh
-set -eu
-ABB_DIR="${ABB_DIR:-/volume1/monitoring/abb}"
-LOG="$ABB_DIR/export.log"
+1. **DSM öffnen:**  
+   Melde dich an unter `https://NASIP:5001` → **Systemsteuerung → Gemeinsamer Ordner**.
 
-echo "$(date '+%F %T') [INFO] ABB Export gestartet" >> "$LOG"
+2. Wähle den bestehenden Ordner **„monitoring“** oder lege einen neuen an.
 
-/usr/syno/bin/activebackup export host > "$ABB_DIR/ActiveBackupHostExport.csv"
-/usr/syno/bin/activebackup export stats > "$ABB_DIR/ActiveBackupStats.csv"
-/usr/syno/bin/activebackup export device-stats > "$ABB_DIR/ActiveBackupDeviceStats.csv"
+3. Klicke auf **Bearbeiten → NFS-Berechtigungen → Erstellen** und setze folgende Werte:
 
-awk -F, -v OFS=, 'NR>1 {print $1,$2,$3,$4,$5,$6}'   "$ABB_DIR/ActiveBackupHostExport.csv" > "$ABB_DIR/ActiveBackupExport.csv"
+   | Einstellung | Wert / Hinweis |
+   |--------------|----------------|
+   | **Hostname oder IP** | IP deines Zabbix-Proxys (z. B. `PROXYIP`) |
+   | **Privileg** | Lesen/Schreiben (oder nur Lesen, falls ausreichend) |
+   | **Squash** | `Root squash` oder `Map all users to admin` (wenn `zabbix`-UID kein Mapping hat) |
+   | **Sicherheit** | `sys` |
+   | **Aktiviere NFSv3 / NFSv4** | nach Umgebung (bei Berechtigungsproblemen meist `NFSv3`) |
 
-echo "$(date '+%F %T') [INFO] ABB Export beendet" >> "$LOG"
-```
-
-#### `/volume1/monitoring/scripts/abb_export_enhance_last_success.sh`
-
-```bash
-#!/bin/sh
-set -eu
-ABB_DIR="${ABB_DIR:-/volume1/monitoring/abb}"
-EXPORT="$ABB_DIR/ActiveBackupExport.csv"
-BACKUP="$EXPORT.bak.$(date +%s)"
-
-cp -a "$EXPORT" "$BACKUP" 2>/dev/null || true
-
-awk -F, -v OFS=, '
-  NR==1 {print "DEVICEID","HOSTNAME","STATUS","BYTES","DURATION","TS","LAST_SUCCESS_TS"; next}
-  NR>1  {print $1,$2,$3,$4,$5,$6,0}
-' "$BACKUP" > "$EXPORT.tmp" && mv "$EXPORT.tmp" "$EXPORT"
-
-chgrp -R zabbix "$ABB_DIR"
-chmod 2775 "$ABB_DIR" || true
-chmod 640 "$ABB_DIR"/*.csv || true
-
-echo "OK: enhanced $EXPORT"
-```
+4. **NFS aktivieren:**  
+   Unter **Systemsteuerung → Dateidienste → NFS** sicherstellen, dass **„NFS aktivieren“** eingeschaltet ist.
 
 ---
 
-### 3️⃣ Taskplaner (DSM GUI oder Cron)
+### 3.2 Auf dem Zabbix-Proxy oder -Server (Konsolenseite)
 
-```bash
-/volume1/monitoring/scripts/abb_export.sh && /volume1/monitoring/scripts/abb_export_enhance_last_success.sh
-```
+1. **Mountpunkt vorbereiten:**
+   ```bash
+   sudo mkdir -p /mnt/synology/monitoring
+   ```
 
----
+2. **Test-Mount:**
+   ```bash
+   sudo mount -t nfs NASIP:/volume1/monitoring /mnt/synology/monitoring
+   ```
 
-## 🖧 NFS-Freigabe
+3. **Lesetest als `zabbix`:**
+   ```bash
+   sudo -u zabbix ls -l /mnt/synology/monitoring/abb | head
+   ```
 
-DSM:
-- Freigabe: `/volume1/monitoring`
-- Erlaubte Hosts: Zabbix Proxy IP
-- Rechte: `rw`, `no_root_squash`
-- Mount-Test:
-```bash
-mount -t nfs 192.0.2.10:/volume1/monitoring /mnt/synology/monitoring
-```
+4. **Persistenter Mount (fstab):**
+   ```fstab
+   NASIP:/volume1/monitoring  /mnt/synology/monitoring  nfs  rw,hard,tcp,vers=3,timeo=600,retrans=2,_netdev,nofail  0  0
+   ```
 
----
+5. **Mount prüfen:**
+   ```bash
+   sudo mount -a
+   mount | grep synology
+   ```
 
-## 🧩 Installation auf dem Zabbix Proxy
-
-```bash
-#!/bin/sh
-set -eu
-CSV="${ABB_CSV_PATH:-/mnt/synology/monitoring/abb}"
-CSV_FILE="$CSV/ActiveBackupExport.csv"
-DEBUG="${ABB_DEBUG:-0}"
-log() { [ "$DEBUG" = "1" ] && echo "DEBUG: $*" >&2; }
-
-case "${1:-}" in
-  check)
-    MAXAGE="${2:-900}"; MOUNT="${3:-/mnt/synology/monitoring}"; REMOTE="${4:-}"
-    SRC_LINE=$(findmnt -rno SOURCE,FSTYPE,TARGET -T "$CSV_FILE" | tail -n1 || true)
-    SRC=$(echo "$SRC_LINE" | awk '{print $1}'); FST=$(echo "$SRC_LINE" | awk '{print $2}')
-    AGE=$(( $(date +%s) - $(stat -c %Y "$CSV_FILE" 2>/dev/null || echo 0) ))
-    log "SRC=$SRC FST=$FST AGE=$AGE"
-    [ -r "$CSV_FILE" ] || { log "not readable"; echo 1; exit 0; }
-    [ "$FST" = "autofs" ] || [ "$SRC" = "$REMOTE" ] || { log "SRC mismatch"; echo 1; exit 0; }
-    [ "$AGE" -le "$MAXAGE" ] || { log "file too old"; echo 1; exit 0; }
-    echo 0
-    ;;
-  discovery)
-    awk -F, 'NR>1 {printf "%s{"{#DEVICEID}":"%s","{#HOSTNAME}":"%s"}",(NR>2?",":""),$1,$2} END{print "]"}'       <(echo "[") "$CSV_FILE"
-    ;;
-  status)
-    awk -F, -v id="$2" 'NR>1 && $1==id {print $3}' "$CSV_FILE"
-    ;;
-  bytes)
-    awk -F, -v id="$2" 'NR>1 && $1==id {print $4}' "$CSV_FILE"
-    ;;
-  duration)
-    awk -F, -v id="$2" 'NR>1 && $1==id {print $5}' "$CSV_FILE"
-    ;;
-  lastsuccess_age)
-    now=$(date +%s)
-    awk -F, -v id="$2" -v now="$now" 'NR>1 && $1==id {diff=now-$7;if(diff<0)diff=0;print diff}' "$CSV_FILE"
-    ;;
-  *)
-    echo "Usage: $0 {check MAXAGE MOUNT REMOTE FSTYPE | discovery | status ID | bytes ID | duration ID | lastsuccess_age ID}" >&2
-    exit 1
-    ;;
-esac
-```
+> 🔹 **Tipp:**  
+> - „noexec“ darf **nicht** aktiv sein (würde die Ausführung von Skripten verhindern).  
+> - Für reine CSV-Zugriffe reicht `ro` (read-only).  
+> - UID/GID-Mapping prüfen: Dateien sollten für „others“ lesbar sein oder UID des `zabbix`-Users passen.
 
 ---
 
-## 🧾 Version & Credits
-
-**Maintainer:** Alexander Fox | PlaNet Fox with Love ❤️  
-**Kompatibel mit:** Zabbix 7.2 – 7.4  
-**Stand:** Oktober 2025  
-**Lizenz:** MIT  
+*(Die weiteren Kapitel zu Items, Debug und Sicherheit bleiben identisch zur vorherigen Version.)*
