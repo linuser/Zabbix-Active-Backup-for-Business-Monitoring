@@ -1,0 +1,1117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<zabbix_export>
+    <version>7.4</version>
+    <template_groups>
+        <template_group>
+            <uuid>4ea8f510bea4424891a7ad06611b3bbf</uuid>
+            <name>Templates/Applications</name>
+        </template_group>
+    </template_groups>
+    <templates>
+        <template>
+            <uuid>df1c2018266e4e05b5c4f25f61c60206</uuid>
+            <template>Synology ABB External SingleScript</template>
+            <name>Synology Active Backup for Business (External, Single Script)</name>
+            <description>Zabbix template for Synology Active Backup for Business.
+
+Uses a JSON master item (abb.sh json) with dependent items +
+JavaScript preprocessing. Only 4 external forks total.
+
+Requirements:
+  - CSVs locally on the proxy via NFS
+  - /usr/lib/zabbix/externalscripts/abb.sh
+
+Status codes: 1=Running 2=Success 3=Aborted 4=Error 5=Warning 8=Partial
+
+v3.0 — Dependent discovery, JS preprocessing, graph prototypes, backup-window awareness.</description>
+            <vendor>
+                <name>Alexander Fox | PlaNet Fox</name>
+                <version>7.4-30</version>
+            </vendor>
+            <groups>
+                <group>
+                    <name>Templates/Applications</name>
+                </group>
+            </groups>
+            <items>
+                <!-- ========== MASTER ITEM ========== -->
+                <item>
+                    <uuid>8e1e578c18804b7bbda788e3131cf634</uuid>
+                    <name>ABB Raw JSON data</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[json]</key>
+                    <delay>5m</delay>
+                    <history>0</history>
+                    <trends>0</trends>
+                    <value_type>TEXT</value_type>
+                    <description>Master item: all device data as JSON. All dependent items and discovery derive from this.</description>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Raw</value>
+                        </tag>
+                    </tags>
+                </item>
+                <!-- ========== HEALTH CHECK ========== -->
+                <item>
+                    <uuid>6e676620dae64b02b6894afff55ce4a7</uuid>
+                    <name>ABB Export status (mount + freshness)</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[check,{$ABB.EXPORT.MAXAGE},{$ABB.MOUNTPOINT},{$ABB.EXPECT_REMOTE},{$ABB.EXPECT_FSTYPE}]</key>
+                    <delay>5m</delay>
+                    <history>7d</history>
+                    <description>Checks NFS mount and CSV freshness. 0=OK, 1=Problem.</description>
+                    <valuemap>
+                        <name>ABB Service Status</name>
+                    </valuemap>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Service</value>
+                        </tag>
+                    </tags>
+                    <triggers>
+                        <trigger>
+                            <uuid>76e680f8bc4b4a05a986970502c70b05</uuid>
+                            <expression>last(/Synology ABB External SingleScript/abb.sh[check,{$ABB.EXPORT.MAXAGE},{$ABB.MOUNTPOINT},{$ABB.EXPECT_REMOTE},{$ABB.EXPECT_FSTYPE}])=1</expression>
+                            <recovery_mode>RECOVERY_EXPRESSION</recovery_mode>
+                            <recovery_expression>last(/Synology ABB External SingleScript/abb.sh[check,{$ABB.EXPORT.MAXAGE},{$ABB.MOUNTPOINT},{$ABB.EXPECT_REMOTE},{$ABB.EXPECT_FSTYPE}])=0</recovery_expression>
+                            <name>ABB: Export script or mount not OK</name>
+                            <priority>AVERAGE</priority>
+                            <description>NFS mount is down, CSV is stale, or export failed.</description>
+                            <manual_close>YES</manual_close>
+                            <tags>
+                                <tag>
+                                    <tag>scope</tag>
+                                    <value>availability</value>
+                                </tag>
+                            </tags>
+                        </trigger>
+                    </triggers>
+                </item>
+                <!-- ========== DEPENDENT GLOBAL ITEMS ========== -->
+                <item>
+                    <uuid>7683dcc4b2c44fe3bd035fd6cba894b9</uuid>
+                    <name>ABB Device count</name>
+                    <type>DEPENDENT</type>
+                    <key>abb.device_count</key>
+                    <delay>0</delay>
+                    <history>30d</history>
+                    <trends>180d</trends>
+                    <preprocessing>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>var d = JSON.parse(value); return d.devices.length;</parameter>
+                            </parameters>
+                        </step>
+                        <step>
+                            <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                            <parameters>
+                                <parameter>3600</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <master_item>
+                        <key>abb.sh[json]</key>
+                    </master_item>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Inventory</value>
+                        </tag>
+                    </tags>
+                </item>
+                <item>
+                    <uuid>66920a2766a6400b92f7d287f1cceca0</uuid>
+                    <name>ABB Failed devices (count)</name>
+                    <type>DEPENDENT</type>
+                    <key>abb.failed_count</key>
+                    <delay>0</delay>
+                    <history>30d</history>
+                    <trends>90d</trends>
+                    <description>Devices whose last run ended in Error (status=4).</description>
+                    <preprocessing>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>var d = JSON.parse(value); return d.devices.filter(function(e){return e.status===4}).length;</parameter>
+                            </parameters>
+                        </step>
+                        <step>
+                            <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                            <parameters>
+                                <parameter>1800</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <master_item>
+                        <key>abb.sh[json]</key>
+                    </master_item>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Overview</value>
+                        </tag>
+                    </tags>
+                    <triggers>
+                        <trigger>
+                            <uuid>0646ec987d45466897a864f22a9bf04a</uuid>
+                            <expression>last(/Synology ABB External SingleScript/abb.failed_count)&gt;0</expression>
+                            <recovery_mode>RECOVERY_EXPRESSION</recovery_mode>
+                            <recovery_expression>last(/Synology ABB External SingleScript/abb.failed_count)=0</recovery_expression>
+                            <name>ABB: {ITEM.LASTVALUE} device(s) in ERROR (last run)</name>
+                            <priority>WARNING</priority>
+                            <manual_close>YES</manual_close>
+                            <tags>
+                                <tag>
+                                    <tag>scope</tag>
+                                    <value>notice</value>
+                                </tag>
+                            </tags>
+                        </trigger>
+                    </triggers>
+                </item>
+                <item>
+                    <uuid>d682633e343a4b9a9c83500cc43df2f3</uuid>
+                    <name>ABB Failed devices (list)</name>
+                    <type>DEPENDENT</type>
+                    <key>abb.failed_list</key>
+                    <delay>0</delay>
+                    <history>7d</history>
+                    <value_type>TEXT</value_type>
+                    <preprocessing>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>var d = JSON.parse(value); return d.devices.filter(function(e){return e.status===4}).map(function(e){return e.host}).join(', ');</parameter>
+                            </parameters>
+                        </step>
+                        <step>
+                            <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                            <parameters>
+                                <parameter>1800</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <master_item>
+                        <key>abb.sh[json]</key>
+                    </master_item>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Overview</value>
+                        </tag>
+                    </tags>
+                </item>
+                <item>
+                    <uuid>9e489d58f415475ba393a92e0466a344</uuid>
+                    <name>ABB Warning devices (count)</name>
+                    <type>DEPENDENT</type>
+                    <key>abb.warn_count</key>
+                    <delay>0</delay>
+                    <history>30d</history>
+                    <trends>90d</trends>
+                    <preprocessing>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>var d = JSON.parse(value); return d.devices.filter(function(e){return e.status===5}).length;</parameter>
+                            </parameters>
+                        </step>
+                        <step>
+                            <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                            <parameters>
+                                <parameter>1800</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <master_item>
+                        <key>abb.sh[json]</key>
+                    </master_item>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Overview</value>
+                        </tag>
+                    </tags>
+                    <triggers>
+                        <trigger>
+                            <uuid>81113d53a5374f318116d012690bb516</uuid>
+                            <expression>last(/Synology ABB External SingleScript/abb.warn_count)&gt;0</expression>
+                            <recovery_mode>RECOVERY_EXPRESSION</recovery_mode>
+                            <recovery_expression>last(/Synology ABB External SingleScript/abb.warn_count)=0</recovery_expression>
+                            <name>ABB: {ITEM.LASTVALUE} device(s) in WARNING (last run)</name>
+                            <priority>INFO</priority>
+                            <manual_close>YES</manual_close>
+                            <tags>
+                                <tag>
+                                    <tag>scope</tag>
+                                    <value>notice</value>
+                                </tag>
+                            </tags>
+                        </trigger>
+                    </triggers>
+                </item>
+                <item>
+                    <uuid>c665507c8eef49babe543853a4a72b03</uuid>
+                    <name>ABB Not-OK (Error + Warning) count</name>
+                    <type>DEPENDENT</type>
+                    <key>abb.notok_count</key>
+                    <delay>0</delay>
+                    <history>30d</history>
+                    <trends>90d</trends>
+                    <preprocessing>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>var d = JSON.parse(value); return d.devices.filter(function(e){return e.status===4||e.status===5}).length;</parameter>
+                            </parameters>
+                        </step>
+                        <step>
+                            <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                            <parameters>
+                                <parameter>1800</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <master_item>
+                        <key>abb.sh[json]</key>
+                    </master_item>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Overview</value>
+                        </tag>
+                    </tags>
+                </item>
+                <item>
+                    <uuid>4ba959be06f14c82947fc3ce1dd18151</uuid>
+                    <name>ABB Not-OK (Error + Warning) list</name>
+                    <type>DEPENDENT</type>
+                    <key>abb.notok_list</key>
+                    <delay>0</delay>
+                    <history>7d</history>
+                    <value_type>TEXT</value_type>
+                    <preprocessing>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>var d = JSON.parse(value); return d.devices.filter(function(e){return e.status===4||e.status===5}).map(function(e){return e.host}).join(', ');</parameter>
+                            </parameters>
+                        </step>
+                        <step>
+                            <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                            <parameters>
+                                <parameter>1800</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <master_item>
+                        <key>abb.sh[json]</key>
+                    </master_item>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Overview</value>
+                        </tag>
+                    </tags>
+                </item>
+                <item>
+                    <uuid>8a905d55adb24a16bfa2993e7555f1db</uuid>
+                    <name>ABB Successful devices (count)</name>
+                    <type>DEPENDENT</type>
+                    <key>abb.success_count</key>
+                    <delay>0</delay>
+                    <history>30d</history>
+                    <trends>90d</trends>
+                    <preprocessing>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>var d = JSON.parse(value); return d.devices.filter(function(e){return e.status===2||e.status===8}).length;</parameter>
+                            </parameters>
+                        </step>
+                        <step>
+                            <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                            <parameters>
+                                <parameter>1800</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <master_item>
+                        <key>abb.sh[json]</key>
+                    </master_item>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Statistics</value>
+                        </tag>
+                    </tags>
+                </item>
+                <item>
+                    <uuid>0d94f5a548ad44828a0c70d012e20704</uuid>
+                    <name>ABB Sum of backup bytes (last run)</name>
+                    <type>DEPENDENT</type>
+                    <key>abb.sum_bytes</key>
+                    <delay>0</delay>
+                    <history>30d</history>
+                    <trends>180d</trends>
+                    <units>B</units>
+                    <preprocessing>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>var d = JSON.parse(value); return d.devices.reduce(function(s,e){return s+(e.bytes||0)},0);</parameter>
+                            </parameters>
+                        </step>
+                        <step>
+                            <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                            <parameters>
+                                <parameter>3600</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <master_item>
+                        <key>abb.sh[json]</key>
+                    </master_item>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Capacity</value>
+                        </tag>
+                    </tags>
+                </item>
+                <!-- ========== CALCULATED ========== -->
+                <item>
+                    <uuid>c9500f9bc52d44ca903d04579ccb9145</uuid>
+                    <name>ABB Backup success rate</name>
+                    <type>CALCULATED</type>
+                    <key>abb.backup.rate</key>
+                    <delay>10m</delay>
+                    <history>30d</history>
+                    <value_type>FLOAT</value_type>
+                    <trends>90d</trends>
+                    <units>%</units>
+                    <params>100*last(//abb.success_count)/(last(//abb.device_count)+0.0001)</params>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Statistics</value>
+                        </tag>
+                    </tags>
+                </item>
+                <!-- ========== EXTERNAL: today counters (need Stats CSV) ========== -->
+                <item>
+                    <uuid>664e6c453dcb49948009d6ebb44ce547</uuid>
+                    <name>ABB Failed backups today</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[failed_today]</key>
+                    <delay>10m</delay>
+                    <history>30d</history>
+                    <trends>90d</trends>
+                    <preprocessing>
+                        <step>
+                            <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                            <parameters>
+                                <parameter>3600</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Statistics</value>
+                        </tag>
+                    </tags>
+                    <triggers>
+                        <trigger>
+                            <uuid>b5015dba8431463883058af97e96dc72</uuid>
+                            <expression>last(/Synology ABB External SingleScript/abb.sh[failed_today])&gt;={$ABB.FAILED.THRESHOLD}</expression>
+                            <recovery_mode>RECOVERY_EXPRESSION</recovery_mode>
+                            <recovery_expression>last(/Synology ABB External SingleScript/abb.sh[failed_today])&lt;{$ABB.FAILED.THRESHOLD}</recovery_expression>
+                            <name>ABB: {ITEM.LASTVALUE} failed backup(s) today</name>
+                            <priority>WARNING</priority>
+                            <manual_close>YES</manual_close>
+                            <tags>
+                                <tag>
+                                    <tag>scope</tag>
+                                    <value>notice</value>
+                                </tag>
+                            </tags>
+                        </trigger>
+                    </triggers>
+                </item>
+                <item>
+                    <uuid>bacca76fe606422098d859e6b85f0074</uuid>
+                    <name>ABB Successful backups today</name>
+                    <type>EXTERNAL</type>
+                    <key>abb.sh[success_today]</key>
+                    <delay>10m</delay>
+                    <history>30d</history>
+                    <trends>90d</trends>
+                    <preprocessing>
+                        <step>
+                            <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                            <parameters>
+                                <parameter>3600</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <tags>
+                        <tag>
+                            <tag>Application</tag>
+                            <value>Synology Active Backup</value>
+                        </tag>
+                        <tag>
+                            <tag>Component</tag>
+                            <value>Statistics</value>
+                        </tag>
+                    </tags>
+                </item>
+            </items>
+            <!-- ========== DISCOVERY (DEPENDENT on JSON master) ========== -->
+            <discovery_rules>
+                <discovery_rule>
+                    <uuid>9c2b55b47518409f92551bfdb8dd5d5d</uuid>
+                    <name>Active Backup Device Discovery</name>
+                    <type>DEPENDENT</type>
+                    <key>abb.device.discovery</key>
+                    <delay>0</delay>
+                    <lifetime>30d</lifetime>
+                    <description>Discovers ABB devices from JSON master. No extra fork needed.</description>
+                    <master_item>
+                        <key>abb.sh[json]</key>
+                    </master_item>
+                    <lld_macro_paths>
+                        <lld_macro_path>
+                            <lld_macro>{#DEVICEID}</lld_macro>
+                            <path>$.id</path>
+                        </lld_macro_path>
+                        <lld_macro_path>
+                            <lld_macro>{#HOSTNAME}</lld_macro>
+                            <path>$.host</path>
+                        </lld_macro_path>
+                    </lld_macro_paths>
+                    <preprocessing>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>var d = JSON.parse(value); return JSON.stringify(d.devices.map(function(e){return {id:e.id,host:e.host}}));</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <item_prototypes>
+                        <item_prototype>
+                            <uuid>227b6fa3bbc9477796e9c4b58b6d43a3</uuid>
+                            <name>ABB [{#HOSTNAME}] status</name>
+                            <type>DEPENDENT</type>
+                            <key>abb.device.status[{#DEVICEID}]</key>
+                            <delay>0</delay>
+                            <history>30d</history>
+                            <trends>90d</trends>
+                            <valuemap>
+                                <name>ABB Backup Status</name>
+                            </valuemap>
+                            <preprocessing>
+                                <step>
+                                    <type>JAVASCRIPT</type>
+                                    <parameters>
+                                        <parameter>var d = JSON.parse(value); var r = d.devices.filter(function(e){return e.id==={#DEVICEID}}); return r.length &gt; 0 ? r[0].status : 99;</parameter>
+                                    </parameters>
+                                </step>
+                                <step>
+                                    <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                                    <parameters>
+                                        <parameter>3600</parameter>
+                                    </parameters>
+                                </step>
+                            </preprocessing>
+                            <master_item>
+                                <key>abb.sh[json]</key>
+                            </master_item>
+                            <trigger_prototypes>
+                                <trigger_prototype>
+                                    <uuid>fae1cfd056344cd99579da2ca11590e9</uuid>
+                                    <expression>last(/Synology ABB External SingleScript/abb.device.status[{#DEVICEID}])=4</expression>
+                                    <recovery_mode>RECOVERY_EXPRESSION</recovery_mode>
+                                    <recovery_expression>last(/Synology ABB External SingleScript/abb.device.status[{#DEVICEID}])=2 or last(/Synology ABB External SingleScript/abb.device.status[{#DEVICEID}])=8</recovery_expression>
+                                    <name>ABB [{#HOSTNAME}]: backup ERROR</name>
+                                    <priority>HIGH</priority>
+                                    <manual_close>YES</manual_close>
+                                    <tags>
+                                        <tag>
+                                            <tag>scope</tag>
+                                            <value>availability</value>
+                                        </tag>
+                                        <tag>
+                                            <tag>device</tag>
+                                            <value>{#HOSTNAME}</value>
+                                        </tag>
+                                    </tags>
+                                </trigger_prototype>
+                                <trigger_prototype>
+                                    <uuid>e2632428242e4153b8f5cf44336f5172</uuid>
+                                    <expression>last(/Synology ABB External SingleScript/abb.device.status[{#DEVICEID}])=5</expression>
+                                    <recovery_mode>RECOVERY_EXPRESSION</recovery_mode>
+                                    <recovery_expression>last(/Synology ABB External SingleScript/abb.device.status[{#DEVICEID}])=2 or last(/Synology ABB External SingleScript/abb.device.status[{#DEVICEID}])=8</recovery_expression>
+                                    <name>ABB [{#HOSTNAME}]: backup WARNING</name>
+                                    <priority>WARNING</priority>
+                                    <manual_close>YES</manual_close>
+                                    <tags>
+                                        <tag>
+                                            <tag>scope</tag>
+                                            <value>notice</value>
+                                        </tag>
+                                        <tag>
+                                            <tag>device</tag>
+                                            <value>{#HOSTNAME}</value>
+                                        </tag>
+                                    </tags>
+                                </trigger_prototype>
+                            </trigger_prototypes>
+                        </item_prototype>
+                        <item_prototype>
+                            <uuid>feafb668f8804d44bb5b48775dbe9635</uuid>
+                            <name>ABB [{#HOSTNAME}] backup bytes</name>
+                            <type>DEPENDENT</type>
+                            <key>abb.device.bytes[{#DEVICEID}]</key>
+                            <delay>0</delay>
+                            <history>30d</history>
+                            <trends>90d</trends>
+                            <units>B</units>
+                            <preprocessing>
+                                <step>
+                                    <type>JAVASCRIPT</type>
+                                    <parameters>
+                                        <parameter>var d = JSON.parse(value); var r = d.devices.filter(function(e){return e.id==={#DEVICEID}}); return r.length &gt; 0 ? r[0].bytes : 0;</parameter>
+                                    </parameters>
+                                </step>
+                                <step>
+                                    <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                                    <parameters>
+                                        <parameter>3600</parameter>
+                                    </parameters>
+                                </step>
+                            </preprocessing>
+                            <master_item>
+                                <key>abb.sh[json]</key>
+                            </master_item>
+                        </item_prototype>
+                        <item_prototype>
+                            <uuid>8700654dbde44826959084cb5e2ba997</uuid>
+                            <name>ABB [{#HOSTNAME}] backup duration</name>
+                            <type>DEPENDENT</type>
+                            <key>abb.device.duration[{#DEVICEID}]</key>
+                            <delay>0</delay>
+                            <history>30d</history>
+                            <trends>90d</trends>
+                            <units>s</units>
+                            <preprocessing>
+                                <step>
+                                    <type>JAVASCRIPT</type>
+                                    <parameters>
+                                        <parameter>var d = JSON.parse(value); var r = d.devices.filter(function(e){return e.id==={#DEVICEID}}); return r.length &gt; 0 ? r[0].duration : 0;</parameter>
+                                    </parameters>
+                                </step>
+                                <step>
+                                    <type>DISCARD_UNCHANGED_HEARTBEAT</type>
+                                    <parameters>
+                                        <parameter>3600</parameter>
+                                    </parameters>
+                                </step>
+                            </preprocessing>
+                            <master_item>
+                                <key>abb.sh[json]</key>
+                            </master_item>
+                            <trigger_prototypes>
+                                <trigger_prototype>
+                                    <uuid>1d5f032660434dbd858f8ed37a8b31b9</uuid>
+                                    <expression>last(/Synology ABB External SingleScript/abb.device.duration[{#DEVICEID}])&gt;={$ABB.BACKUP.MAX.DURATION}</expression>
+                                    <recovery_mode>RECOVERY_EXPRESSION</recovery_mode>
+                                    <recovery_expression>last(/Synology ABB External SingleScript/abb.device.duration[{#DEVICEID}])&lt;{$ABB.BACKUP.MAX.DURATION}</recovery_expression>
+                                    <name>ABB [{#HOSTNAME}]: backup took {ITEM.LASTVALUE} (threshold: {$ABB.BACKUP.MAX.DURATION}s)</name>
+                                    <priority>WARNING</priority>
+                                    <manual_close>YES</manual_close>
+                                    <tags>
+                                        <tag>
+                                            <tag>scope</tag>
+                                            <value>performance</value>
+                                        </tag>
+                                        <tag>
+                                            <tag>device</tag>
+                                            <value>{#HOSTNAME}</value>
+                                        </tag>
+                                    </tags>
+                                </trigger_prototype>
+                            </trigger_prototypes>
+                        </item_prototype>
+                        <item_prototype>
+                            <uuid>96b19becd2244c719dd7fe8a5cb59551</uuid>
+                            <name>ABB [{#HOSTNAME}] age since last success</name>
+                            <type>DEPENDENT</type>
+                            <key>abb.device.lastsuccess_age[{#DEVICEID}]</key>
+                            <delay>0</delay>
+                            <history>30d</history>
+                            <trends>90d</trends>
+                            <units>s</units>
+                            <description>Seconds since last successful backup. 2147483647 = never.</description>
+                            <preprocessing>
+                                <step>
+                                    <type>JAVASCRIPT</type>
+                                    <parameters>
+                                        <parameter>var d = JSON.parse(value); var r = d.devices.filter(function(e){return e.id==={#DEVICEID}}); return r.length &gt; 0 ? r[0].last_success_age : 2147483647;</parameter>
+                                    </parameters>
+                                </step>
+                            </preprocessing>
+                            <master_item>
+                                <key>abb.sh[json]</key>
+                            </master_item>
+                            <trigger_prototypes>
+                                <trigger_prototype>
+                                    <uuid>ef553018c8684fb897aea7f78715a11f</uuid>
+                                    <expression>last(/Synology ABB External SingleScript/abb.device.lastsuccess_age[{#DEVICEID}])&gt;={$ABB.BACKUP.MAX.AGE} and last(/Synology ABB External SingleScript/abb.device.status[{#DEVICEID}])&lt;&gt;1</expression>
+                                    <recovery_mode>RECOVERY_EXPRESSION</recovery_mode>
+                                    <recovery_expression>last(/Synology ABB External SingleScript/abb.device.lastsuccess_age[{#DEVICEID}])&lt;{$ABB.BACKUP.MAX.AGE}</recovery_expression>
+                                    <name>ABB [{#HOSTNAME}]: no successful backup for {ITEM.LASTVALUE}</name>
+                                    <priority>HIGH</priority>
+                                    <description>No successful backup within {$ABB.BACKUP.MAX.AGE} seconds. Suppressed while backup is running (status=1).</description>
+                                    <manual_close>YES</manual_close>
+                                    <tags>
+                                        <tag>
+                                            <tag>scope</tag>
+                                            <value>availability</value>
+                                        </tag>
+                                        <tag>
+                                            <tag>device</tag>
+                                            <value>{#HOSTNAME}</value>
+                                        </tag>
+                                    </tags>
+                                </trigger_prototype>
+                            </trigger_prototypes>
+                        </item_prototype>
+                    </item_prototypes>
+                    <graph_prototypes>
+                        <graph_prototype>
+                            <uuid>7d03363afab34d4c997c5e31f026e6d5</uuid>
+                            <name>ABB [{#HOSTNAME}] backup size and duration</name>
+                            <type>NORMAL</type>
+                            <ymin_type_1>FIXED</ymin_type_1>
+                            <graph_items>
+                                <graph_item>
+                                    <sortorder>0</sortorder>
+                                    <drawtype>FILLED_REGION</drawtype>
+                                    <color>4CAF50</color>
+                                    <yaxisside>LEFT</yaxisside>
+                                    <item>
+                                        <host>Synology ABB External SingleScript</host>
+                                        <key>abb.device.bytes[{#DEVICEID}]</key>
+                                    </item>
+                                </graph_item>
+                                <graph_item>
+                                    <sortorder>1</sortorder>
+                                    <drawtype>BOLD_LINE</drawtype>
+                                    <color>2196F3</color>
+                                    <yaxisside>RIGHT</yaxisside>
+                                    <item>
+                                        <host>Synology ABB External SingleScript</host>
+                                        <key>abb.device.duration[{#DEVICEID}]</key>
+                                    </item>
+                                </graph_item>
+                            </graph_items>
+                        </graph_prototype>
+                    </graph_prototypes>
+                </discovery_rule>
+            </discovery_rules>
+            <!-- ========== MACROS ========== -->
+            <macros>
+                <macro>
+                    <macro>{$ABB.BACKUP.MAX.AGE}</macro>
+                    <value>129600</value>
+                    <description>Max seconds since last successful backup (default: 36h)</description>
+                </macro>
+                <macro>
+                    <macro>{$ABB.BACKUP.MAX.DURATION}</macro>
+                    <value>43200</value>
+                    <description>Max backup duration in seconds (default: 12h)</description>
+                </macro>
+                <macro>
+                    <macro>{$ABB.CSV.PATH}</macro>
+                    <value>/mnt/synology/monitoring/abb</value>
+                    <description>Local path to ABB CSV files on Zabbix proxy</description>
+                </macro>
+                <macro>
+                    <macro>{$ABB.EXPECT_FSTYPE}</macro>
+                    <value>nfs</value>
+                    <description>Expected filesystem type for mount check</description>
+                </macro>
+                <macro>
+                    <macro>{$ABB.EXPECT_REMOTE}</macro>
+                    <value>192.168.33.2:/volume1/monitoring</value>
+                    <description>Expected NFS remote source</description>
+                </macro>
+                <macro>
+                    <macro>{$ABB.EXPORT.MAXAGE}</macro>
+                    <value>900</value>
+                    <description>Max CSV file age in seconds (default: 15min)</description>
+                </macro>
+                <macro>
+                    <macro>{$ABB.FAILED.THRESHOLD}</macro>
+                    <value>1</value>
+                    <description>Min failed backups today to trigger WARNING</description>
+                </macro>
+                <macro>
+                    <macro>{$ABB.MOUNTPOINT}</macro>
+                    <value>/mnt/synology/monitoring</value>
+                    <description>NFS mount point on Zabbix proxy</description>
+                </macro>
+                <macro>
+                    <macro>{$ABB.RATE.THRESHOLD}</macro>
+                    <value>90</value>
+                    <description>Min backup success rate %</description>
+                </macro>
+            </macros>
+            <!-- ========== DASHBOARD ========== -->
+            <dashboards>
+                <dashboard>
+                    <uuid>6ddb5928256c44cfaa31694116b98103</uuid>
+                    <name>ABB Monitoring</name>
+                    <auto_start>YES</auto_start>
+                    <pages>
+                        <page>
+                            <name>Overview</name>
+                            <widgets>
+                                <widget>
+                                    <type>item</type>
+                                    <name>Success Rate</name>
+                                    <x>0</x>
+                                    <y>0</y>
+                                    <width>12</width>
+                                    <height>4</height>
+                                    <fields>
+                                        <field>
+                                            <type>ITEM</type>
+                                            <name>itemid.0</name>
+                                            <value>
+                                                <host>Synology ABB External SingleScript</host>
+                                                <key>abb.backup.rate</key>
+                                            </value>
+                                        </field>
+                                    </fields>
+                                </widget>
+                                <widget>
+                                    <type>item</type>
+                                    <name>Devices</name>
+                                    <x>12</x>
+                                    <y>0</y>
+                                    <width>6</width>
+                                    <height>4</height>
+                                    <fields>
+                                        <field>
+                                            <type>ITEM</type>
+                                            <name>itemid.0</name>
+                                            <value>
+                                                <host>Synology ABB External SingleScript</host>
+                                                <key>abb.device_count</key>
+                                            </value>
+                                        </field>
+                                    </fields>
+                                </widget>
+                                <widget>
+                                    <type>item</type>
+                                    <name>Errors</name>
+                                    <x>18</x>
+                                    <y>0</y>
+                                    <width>6</width>
+                                    <height>4</height>
+                                    <fields>
+                                        <field>
+                                            <type>ITEM</type>
+                                            <name>itemid.0</name>
+                                            <value>
+                                                <host>Synology ABB External SingleScript</host>
+                                                <key>abb.failed_count</key>
+                                            </value>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>up_color</name>
+                                            <value>FF0000</value>
+                                        </field>
+                                    </fields>
+                                </widget>
+                                <widget>
+                                    <type>item</type>
+                                    <name>Warnings</name>
+                                    <x>24</x>
+                                    <y>0</y>
+                                    <width>6</width>
+                                    <height>4</height>
+                                    <fields>
+                                        <field>
+                                            <type>ITEM</type>
+                                            <name>itemid.0</name>
+                                            <value>
+                                                <host>Synology ABB External SingleScript</host>
+                                                <key>abb.warn_count</key>
+                                            </value>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>up_color</name>
+                                            <value>FFA000</value>
+                                        </field>
+                                    </fields>
+                                </widget>
+                                <widget>
+                                    <type>item</type>
+                                    <name>Total Bytes</name>
+                                    <x>30</x>
+                                    <y>0</y>
+                                    <width>7</width>
+                                    <height>4</height>
+                                    <fields>
+                                        <field>
+                                            <type>ITEM</type>
+                                            <name>itemid.0</name>
+                                            <value>
+                                                <host>Synology ABB External SingleScript</host>
+                                                <key>abb.sum_bytes</key>
+                                            </value>
+                                        </field>
+                                    </fields>
+                                </widget>
+                                <widget>
+                                    <type>item</type>
+                                    <name>Export</name>
+                                    <x>37</x>
+                                    <y>0</y>
+                                    <width>7</width>
+                                    <height>4</height>
+                                    <fields>
+                                        <field>
+                                            <type>ITEM</type>
+                                            <name>itemid.0</name>
+                                            <value>
+                                                <host>Synology ABB External SingleScript</host>
+                                                <key>abb.sh[check,{$ABB.EXPORT.MAXAGE},{$ABB.MOUNTPOINT},{$ABB.EXPECT_REMOTE},{$ABB.EXPECT_FSTYPE}]</key>
+                                            </value>
+                                        </field>
+                                    </fields>
+                                </widget>
+                                <widget>
+                                    <type>trigover</type>
+                                    <name>Active Problems</name>
+                                    <x>0</x>
+                                    <y>4</y>
+                                    <width>24</width>
+                                    <height>5</height>
+                                </widget>
+                                <widget>
+                                    <type>plaintext</type>
+                                    <name>Not-OK Devices</name>
+                                    <x>24</x>
+                                    <y>4</y>
+                                    <width>20</width>
+                                    <height>5</height>
+                                    <fields>
+                                        <field>
+                                            <type>ITEM</type>
+                                            <name>itemids.0</name>
+                                            <value>
+                                                <host>Synology ABB External SingleScript</host>
+                                                <key>abb.notok_list</key>
+                                            </value>
+                                        </field>
+                                        <field>
+                                            <type>INTEGER</type>
+                                            <name>show_lines</name>
+                                            <value>20</value>
+                                        </field>
+                                    </fields>
+                                </widget>
+                                <widget>
+                                    <type>svggraph</type>
+                                    <name>Backup Volume (7d)</name>
+                                    <x>0</x>
+                                    <y>9</y>
+                                    <width>22</width>
+                                    <height>5</height>
+                                    <fields>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>ds.0.items.0</name>
+                                            <value>ABB Sum of backup bytes (last run)</value>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>ds.0.color.0</name>
+                                            <value>2196F3</value>
+                                        </field>
+                                    </fields>
+                                </widget>
+                                <widget>
+                                    <type>svggraph</type>
+                                    <name>Success / Errors / Warnings (7d)</name>
+                                    <x>22</x>
+                                    <y>9</y>
+                                    <width>22</width>
+                                    <height>5</height>
+                                    <fields>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>ds.0.items.0</name>
+                                            <value>ABB Successful devices (count)</value>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>ds.0.color.0</name>
+                                            <value>4CAF50</value>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>ds.1.items.0</name>
+                                            <value>ABB Failed devices (count)</value>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>ds.1.color.0</name>
+                                            <value>F44336</value>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>ds.2.items.0</name>
+                                            <value>ABB Warning devices (count)</value>
+                                        </field>
+                                        <field>
+                                            <type>STRING</type>
+                                            <name>ds.2.color.0</name>
+                                            <value>FFA000</value>
+                                        </field>
+                                    </fields>
+                                </widget>
+                            </widgets>
+                        </page>
+                    </pages>
+                </dashboard>
+            </dashboards>
+            <!-- ========== VALUE MAPS ========== -->
+            <valuemaps>
+                <valuemap>
+                    <uuid>a1e22a169525418a94b8e852808807f4</uuid>
+                    <name>ABB Backup Status</name>
+                    <mappings>
+                        <mapping>
+                            <value>1</value>
+                            <newvalue>Running</newvalue>
+                        </mapping>
+                        <mapping>
+                            <value>2</value>
+                            <newvalue>Success</newvalue>
+                        </mapping>
+                        <mapping>
+                            <value>3</value>
+                            <newvalue>Aborted</newvalue>
+                        </mapping>
+                        <mapping>
+                            <value>4</value>
+                            <newvalue>Error</newvalue>
+                        </mapping>
+                        <mapping>
+                            <value>5</value>
+                            <newvalue>Warning</newvalue>
+                        </mapping>
+                        <mapping>
+                            <value>8</value>
+                            <newvalue>Partial</newvalue>
+                        </mapping>
+                        <mapping>
+                            <value>99</value>
+                            <newvalue>Unknown</newvalue>
+                        </mapping>
+                    </mappings>
+                </valuemap>
+                <valuemap>
+                    <uuid>2c462205d20741469c0108d6d5972de4</uuid>
+                    <name>ABB Service Status</name>
+                    <mappings>
+                        <mapping>
+                            <value>0</value>
+                            <newvalue>OK</newvalue>
+                        </mapping>
+                        <mapping>
+                            <value>1</value>
+                            <newvalue>Problem</newvalue>
+                        </mapping>
+                    </mappings>
+                </valuemap>
+            </valuemaps>
+        </template>
+    </templates>
+    <!-- ========== GLOBAL TRIGGERS ========== -->
+    <triggers>
+        <trigger>
+            <uuid>74cc1a0da3094d938ca30e89c5234902</uuid>
+            <expression>last(/Synology ABB External SingleScript/abb.backup.rate)&lt;{$ABB.RATE.THRESHOLD} and last(/Synology ABB External SingleScript/abb.device_count)&gt;0</expression>
+            <recovery_mode>RECOVERY_EXPRESSION</recovery_mode>
+            <recovery_expression>last(/Synology ABB External SingleScript/abb.backup.rate)&gt;={$ABB.RATE.THRESHOLD}</recovery_expression>
+            <name>ABB: success rate below {$ABB.RATE.THRESHOLD}% ({ITEM.LASTVALUE1}%)</name>
+            <priority>WARNING</priority>
+            <manual_close>YES</manual_close>
+            <tags>
+                <tag>
+                    <tag>scope</tag>
+                    <value>notice</value>
+                </tag>
+            </tags>
+        </trigger>
+    </triggers>
+</zabbix_export>
