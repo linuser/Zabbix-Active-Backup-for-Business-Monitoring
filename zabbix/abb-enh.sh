@@ -61,9 +61,10 @@ do_report() {
   printf '%-25s  %-10s  %12s  %10s  %s\n' "HOST" "STATUS" "BYTES" "DURATION" "LAST OK"
   printf '%-25s  %-10s  %12s  %10s  %s\n' "-------------------------" "----------" "------------" "----------" "----------"
 
-  awk -F',' -v now="$NOW" 'NR>1 && $1!="" {
+  awk -F',' -v OFS='\t' 'NR>1 && $1!="" {
+    gsub(/"/, "", $2)
     print $2, $3+0, $4+0, $5+0, (NF>=7 && $7+0>0 ? $7+0 : 0)
-  }' "$CSV_EXPORT" | while read -r host status bytes dur lss; do
+  }' "$CSV_EXPORT" | while IFS=$'\t' read -r host status bytes dur lss; do
     lsa=$(( lss > 0 ? NOW - lss : 2147483647 ))
     printf '%-25s  %-10s  %12s  %10s  %s\n' \
       "$host" \
@@ -78,9 +79,10 @@ do_failed_info() {
   [ -r "$CSV_EXPORT" ] || { echo "CSV not readable: $CSV_EXPORT"; exit 1; }
 
   local found=0
-  awk -F',' 'NR>1 && $1!="" && ($3+0==4||$3+0==5||$3+0==3) {
+  awk -F',' -v OFS='\t' 'NR>1 && $1!="" && ($3+0==4||$3+0==5||$3+0==3) {
+    gsub(/"/, "", $2)
     print $2, $3+0, $4+0, $5+0, (NF>=7 && $7+0>0 ? $7+0 : 0)
-  }' "$CSV_EXPORT" | while read -r host status bytes dur lss; do
+  }' "$CSV_EXPORT" | while IFS=$'\t' read -r host status bytes dur lss; do
     lsa=$(( lss > 0 ? NOW - lss : 2147483647 ))
     found=1
     printf '%s: %s (bytes=%s, duration=%s, last_success=%s ago)\n' \

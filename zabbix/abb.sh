@@ -111,8 +111,9 @@ do_check() {
 do_discovery() {
   [ -r "$CSV_EXPORT" ] || die "CSV not readable: $CSV_EXPORT"
   awk -F',' 'NR>1 && $1!="" {
+    host=$2; gsub(/"/, "", host)
     if(c++) printf ","
-    printf "{\"{#DEVICEID}\":\"%s\",\"{#HOSTNAME}\":\"%s\"}", $1, $2
+    printf "{\"{#DEVICEID}\":\"%s\",\"{#HOSTNAME}\":\"%s\"}", $1, host
   } BEGIN{printf "{\"data\":["} END{printf "]}\n"}' "$CSV_EXPORT"
 }
 
@@ -122,7 +123,7 @@ do_discovery() {
 do_json() {
   [ -r "$CSV_EXPORT" ] || die "CSV not readable: $CSV_EXPORT"
   awk -F',' -v now="$NOW" 'NR>1 && $1!="" {
-    did=$1; host=$2; status=$3+0; bytes=$4+0; dur=$5+0; ts=$6+0
+    did=$1; host=$2; gsub(/"/, "", host); status=$3+0; bytes=$4+0; dur=$5+0; ts=$6+0
     lss = (NF>=7 && $7+0 > 0) ? $7+0 : 0
     lsa = (lss > 0) ? (now - lss) : 2147483647
 
@@ -176,10 +177,10 @@ do_notok_count() {
   awk -F',' 'NR>1 && (($3+0)==4||($3+0)==5){c++} END{print c+0}' "$CSV_EXPORT"
 }
 do_notok_list() {
-  awk -F',' 'NR>1 && (($3+0)==4||($3+0)==5){printf "%s%s",sep,$2; sep=","} END{print ""}' "$CSV_EXPORT"
+  awk -F',' 'NR>1 && (($3+0)==4||($3+0)==5){h=$2; gsub(/"/, "", h); printf "%s%s",sep,h; sep=","} END{print ""}' "$CSV_EXPORT"
 }
 do_failed_list() {
-  awk -F',' 'NR>1 && ($3+0)==4{printf "%s%s",sep,$2; sep=","} END{print ""}' "$CSV_EXPORT"
+  awk -F',' 'NR>1 && ($3+0)==4{h=$2; gsub(/"/, "", h); printf "%s%s",sep,h; sep=","} END{print ""}' "$CSV_EXPORT"
 }
 do_sum_bytes() {
   awk -F',' 'NR>1{s+=$4+0} END{printf "%.0f\n",s}' "$CSV_EXPORT"
