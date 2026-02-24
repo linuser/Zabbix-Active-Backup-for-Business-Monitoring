@@ -56,16 +56,55 @@ head -2 /volume1/monitoring/abb/ActiveBackupExport.csv
 
 Erwartet: 7 Spalten inklusive `LAST_SUCCESS_TS`.
 
-### Geplante Aufgaben
+### Geplante Aufgaben in DSM einrichten
 
-**DSM → Systemsteuerung → Aufgabenplaner → Erstellen → Geplante Aufgabe → Benutzerdefiniertes Skript**
+**DSM → Systemsteuerung → Aufgabenplaner**
 
-| Aufgabe | Zeitplan | Befehl |
-|---------|----------|--------|
-| ABB Export | Alle 5 Min. | `/volume1/monitoring/scripts/abb_export.sh` |
-| ABB Tageszusammenfassung | Täglich 23:55 | `/volume1/monitoring/scripts/abb_daily_summary.sh` |
+#### Aufgabe 1: ABB Export (alle 5 Minuten)
 
-> Bei einem Update von einer älteren Version: die separate "Enhance"-Aufgabe entfernen. Export und Anreicherung sind jetzt in einem Skript kombiniert.
+1. **Erstellen → Geplante Aufgabe → Benutzerdefiniertes Skript**
+2. Tab **Allgemein**:
+   - Aufgabe: `ABB Export`
+   - Benutzer: **root**
+   - Aktiviert: ✅
+3. Tab **Zeitplan**:
+   - An folgenden Tagen ausführen: **Täglich**
+   - Häufigkeit: **Alle 5 Minuten**
+   - Erste Ausführungszeit: `00:00`
+   - Letzte Ausführungszeit: `23:55`
+4. Tab **Aufgabeneinstellungen** → Benutzerdefiniertes Skript:
+
+```
+/volume1/monitoring/scripts/abb_export.sh
+```
+
+#### Aufgabe 2: ABB Tageszusammenfassung (einmal täglich)
+
+1. **Erstellen → Geplante Aufgabe → Benutzerdefiniertes Skript**
+2. Tab **Allgemein**:
+   - Aufgabe: `ABB Daily Summary`
+   - Benutzer: **root**
+   - Aktiviert: ✅
+3. Tab **Zeitplan**:
+   - An folgenden Tagen ausführen: **Täglich**
+   - Häufigkeit: einmal am Tag, Zeit: `23:55`
+4. Tab **Aufgabeneinstellungen** → Benutzerdefiniertes Skript:
+
+```
+/volume1/monitoring/scripts/abb_daily_summary.sh
+```
+
+#### Aufgabe testen
+
+Aufgabe markieren → **Ausführen** klicken. Danach prüfen:
+
+```bash
+head -2 /volume1/monitoring/abb/ActiveBackupExport.csv
+```
+
+Sollte 7 Spalten zeigen mit `LAST_SUCCESS_TS` als letzter Spalte.
+
+> ⚠️ **Upgrade-Hinweis:** Falls du eine ältere Version benutzt hast — die separate „Enhance"-Aufgabe (`abb_export_enhance_last_success.sh`) kann gelöscht werden. Export und Anreicherung sind jetzt in einem Skript kombiniert.
 
 ---
 
