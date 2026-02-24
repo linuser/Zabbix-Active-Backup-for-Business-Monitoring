@@ -48,7 +48,7 @@ do_check() {
     log_debug "findmnt: $mnt_output"
 
     if [ -z "$mnt_output" ]; then
-      log_debug "Mount not found: $mpoint"; exit 1
+      log_debug "Mount not found: $mpoint"; echo 1; exit 0
     fi
 
     # Prefer NFS/CIFS line over autofs if both present
@@ -62,14 +62,14 @@ do_check() {
         local actual_src
         actual_src="$(echo "$check_line" | awk '{print $2}')"
         if [ "$actual_src" != "$expect_remote" ]; then
-          log_debug "Remote mismatch: got=$actual_src want=$expect_remote"; exit 1
+          log_debug "Remote mismatch: got=$actual_src want=$expect_remote"; echo 1; exit 0
         fi
       fi
       if [ -n "$expect_fstype" ]; then
         local actual_fs
         actual_fs="$(echo "$check_line" | awk '{print $3}')"
         if [ "$actual_fs" != "$expect_fstype" ]; then
-          log_debug "FS type mismatch: got=$actual_fs want=$expect_fstype"; exit 1
+          log_debug "FS type mismatch: got=$actual_fs want=$expect_fstype"; echo 1; exit 0
         fi
       fi
     fi
@@ -78,13 +78,13 @@ do_check() {
   # --- File readability check ---
   if [ "$(id -u -n 2>/dev/null)" = "$ZBX_USER" ]; then
     if ! test -r "$CSV_EXPORT"; then
-      log_debug "File not readable by $ZBX_USER (direct)"; exit 1
+      log_debug "File not readable by $ZBX_USER (direct)"; echo 1; exit 0
     fi
   else
     if ! sudo -u "$ZBX_USER" test -r "$CSV_EXPORT" 2>/dev/null; then
       # Fallback: try direct read (sudoers may not be configured)
       if ! test -r "$CSV_EXPORT"; then
-        log_debug "File not readable by $ZBX_USER"; exit 1
+        log_debug "File not readable by $ZBX_USER"; echo 1; exit 0
       fi
     fi
   fi
@@ -94,12 +94,12 @@ do_check() {
   local file_mtime file_age
   file_mtime="$(stat -c '%Y' "$CSV_EXPORT" 2>/dev/null)" \
     || file_mtime="$(stat -f '%m' "$CSV_EXPORT" 2>/dev/null)" \
-    || { log_debug "Cannot stat $CSV_EXPORT"; exit 1; }
+    || { log_debug "Cannot stat $CSV_EXPORT"; echo 1; exit 0; }
   file_age=$(( NOW - file_mtime ))
   log_debug "AGE=$file_age"
 
   if [ "$file_age" -gt "$max_age" ]; then
-    log_debug "CSV stale: age=${file_age}s > max=${max_age}s"; exit 1
+    log_debug "CSV stale: age=${file_age}s > max=${max_age}s"; echo 1; exit 0
   fi
 
   echo 0
@@ -156,11 +156,15 @@ do_device_count() {
 }
 do_success_today() {
   [ -r "$CSV_STATS" ] || { echo 0; return; }
-  awk -F',' 'NR==2{print $1+0}' "$CSV_STATS"
+  local v
+  v="$(awk -F',' 'NR==2{print $1+0}' "$CSV_STATS")"
+  echo "${v:-0}"
 }
 do_failed_today() {
   [ -r "$CSV_STATS" ] || { echo 0; return; }
-  awk -F',' 'NR==2{print $2+0}' "$CSV_STATS"
+  local v
+  v="$(awk -F',' 'NR==2{print $2+0}' "$CSV_STATS")"
+  echo "${v:-0}"
 }
 do_failed_count() {
   awk -F',' 'NR>1 && ($3+0)==4{c++} END{print c+0}' "$CSV_EXPORT"
