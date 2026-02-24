@@ -34,7 +34,7 @@
 ## Schnellstart
 
 ```bash
-git clone https://github.com/YOUR_USER/synology-abb-zabbix.git
+git clone https://github.com/linuser/Zabbix-Active-Backup-for-Business-Monitoring.git
 cd synology-abb-zabbix
 sudo ./install.sh
 ```
