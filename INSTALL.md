@@ -56,16 +56,55 @@ head -2 /volume1/monitoring/abb/ActiveBackupExport.csv
 
 Expected: 7 columns including `LAST_SUCCESS_TS`.
 
-### Scheduled tasks
+### Set up scheduled tasks in DSM
 
-**DSM → Control Panel → Task Scheduler → Create → Scheduled Task → User-defined Script**
+**DSM → Control Panel → Task Scheduler**
 
-| Task | Schedule | Command |
-|------|----------|---------|
-| ABB Export | Every 5 min | `/volume1/monitoring/scripts/abb_export.sh` |
-| ABB Daily Summary | Daily 23:55 | `/volume1/monitoring/scripts/abb_daily_summary.sh` |
+#### Task 1: ABB Export (every 5 minutes)
 
-> If upgrading from a previous version: remove any separate "enhance" task. Export and enhance are now in one script.
+1. **Create → Scheduled Task → User-defined Script**
+2. **General** tab:
+   - Task: `ABB Export`
+   - User: **root**
+   - Enabled: ✅
+3. **Schedule** tab:
+   - Run on the following days: **Daily**
+   - Frequency: **Every 5 minutes**
+   - First run time: `00:00`
+   - Last run time: `23:55`
+4. **Task Settings** tab → User-defined script:
+
+```
+/volume1/monitoring/scripts/abb_export.sh
+```
+
+#### Task 2: ABB Daily Summary (once per day)
+
+1. **Create → Scheduled Task → User-defined Script**
+2. **General** tab:
+   - Task: `ABB Daily Summary`
+   - User: **root**
+   - Enabled: ✅
+3. **Schedule** tab:
+   - Run on the following days: **Daily**
+   - Frequency: once per day, Time: `23:55`
+4. **Task Settings** tab → User-defined script:
+
+```
+/volume1/monitoring/scripts/abb_daily_summary.sh
+```
+
+#### Test the task
+
+Select the task → click **Run**. Then verify:
+
+```bash
+head -2 /volume1/monitoring/abb/ActiveBackupExport.csv
+```
+
+Should show 7 columns with `LAST_SUCCESS_TS` as the last column.
+
+> ⚠️ **Upgrade note:** If upgrading from a previous version, remove the separate "enhance" task (`abb_export_enhance_last_success.sh`). Export and enrichment are now combined in one script.
 
 ---
 
