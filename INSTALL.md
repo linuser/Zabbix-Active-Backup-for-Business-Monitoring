@@ -30,6 +30,8 @@ Before installing, make sure you have:
 
 ## Step 1: NFS Share (Synology)
 
+> 📍 **Host:** Synology NAS
+
 The NAS needs **exactly one shared folder**: **`monitoring`** (= `/volume1/monitoring`). The scripts (Step 2) create two sub-folders inside it automatically:
 
 ```
@@ -52,6 +54,8 @@ The share will be available as `<nas-ip>:/volume1/monitoring`.
 ---
 
 ## Step 2: Synology Scripts
+
+> 📍 **Host:** Synology NAS
 
 SSH into the NAS as `admin`.
 
@@ -95,11 +99,16 @@ Expected: 7 columns including `LAST_SUCCESS_TS`.
    - Frequency: **Every 5 minutes**
    - First run time: `00:00`
    - Last run time: `23:55`
-4. **Task Settings** tab → User-defined script:
+4. **Task Settings** tab → in the **"Run command / User-defined script"** field enter **exactly this one line** (nothing else):
 
 ```
 /volume1/monitoring/scripts/abb_export.sh
 ```
+
+> **Only if Active Backup or the `monitoring` folder is not on `/volume1`** (e.g. `/volume2`): prefix the paths as env variables —
+> ```
+> ABB_DIR='/volume2/monitoring/abb' ABB_DB_DIR='/volume2/@ActiveBackup' ABB_SQLITE='/usr/bin/sqlite3' /volume2/monitoring/scripts/abb_export.sh
+> ```
 
 The Schedule tab should look like this — important: **Last run time `23:55`** (not earlier, otherwise the export only runs until then and sits idle the rest of the day):
 
@@ -115,7 +124,7 @@ The Schedule tab should look like this — important: **Last run time `23:55`** 
 3. **Schedule** tab:
    - Run on the following days: **Daily**
    - Frequency: once per day, Time: `23:55`
-4. **Task Settings** tab → User-defined script:
+4. **Task Settings** tab → in the **"Run command / User-defined script"** field enter **exactly this one line** (nothing else):
 
 ```
 /volume1/monitoring/scripts/abb_daily_summary.sh
@@ -136,6 +145,8 @@ Should show 7 columns with `LAST_SUCCESS_TS` as the last column.
 ---
 
 ## Step 3: NFS Mount (Zabbix Proxy)
+
+> 📍 **Host:** Zabbix proxy
 
 The NAS share `<nas-ip>:/volume1/monitoring` is mounted on the **Zabbix proxy** at **`/mnt/synology/monitoring`**. The CSVs then live under `/mnt/synology/monitoring/abb/` — exactly the path `abb.sh` reads (`ZBX_CSV_PATH`).
 
@@ -171,6 +182,8 @@ monitoring  -fstype=nfs,ro,soft,timeo=10  <nas-ip>:/volume1/monitoring
 
 ## Step 4: Zabbix Scripts
 
+> 📍 **Host:** Zabbix proxy
+
 ```bash
 sudo cp zabbix/abb.sh zabbix/abb-enh.sh /usr/lib/zabbix/externalscripts/
 sudo chmod 755 /usr/lib/zabbix/externalscripts/abb*.sh
@@ -196,6 +209,8 @@ ABB_DEBUG=1 sudo -u zabbix /usr/lib/zabbix/externalscripts/abb.sh check 900 /mnt
 
 ## Step 5: Zabbix Template
 
+> 📍 **Host:** Zabbix UI (browser)
+
 ### Import
 
 **Zabbix UI → Data collection → Templates → Import** → select `template/Synology-ABB-Zabbix-Check.xml` → **Import**
@@ -215,6 +230,8 @@ Host → **Macros** → **Inherited and host macros** → override as needed (se
 ---
 
 ## Step 6: Verify
+
+> 📍 **Host:** Zabbix UI (browser)
 
 1. Wait 5–10 minutes
 2. **Monitoring → Latest data** → filter by host → `ABB Raw JSON data` should have a value
