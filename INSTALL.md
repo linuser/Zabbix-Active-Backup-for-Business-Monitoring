@@ -15,7 +15,30 @@ The monitoring stack has two halves:
 
 ---
 
+## Prerequisites
+
+Before installing, make sure you have:
+
+- **Synology DSM** with **Active Backup for Business installed** and **at least one backup task configured** — without a running ABB task there is no data to monitor.
+- **`sqlite3` on the NAS** (usually present on DSM — `which sqlite3`).
+- **Zabbix 6.4+** (the template uses JavaScript preprocessing).
+- **SSH access** to the NAS (`admin`; the DSM tasks run as `root`) **and** to the Zabbix proxy/server (`root`).
+- **Network:** the Zabbix proxy must reach the NAS over **NFS** (firewall/route).
+- This **repository** cloned/downloaded (contains `synology/`, `zabbix/`, `template/`).
+
+---
+
 ## Step 1: NFS Share (Synology)
+
+The NAS needs **exactly one shared folder**: **`monitoring`** (= `/volume1/monitoring`). The scripts (Step 2) create two sub-folders inside it automatically:
+
+```
+/volume1/monitoring/
+├── scripts/   ← export scripts (abb_export.sh, abb_daily_summary.sh)
+└── abb/       ← generated CSV files (read by the Zabbix proxy over NFS)
+```
+
+This single folder is exported **read-only** over NFS — and it is exactly what the Zabbix proxy mounts in Step 3.
 
 1. **DSM → Control Panel → Shared Folder** → Create `monitoring`
 2. **DSM → Control Panel → File Services → NFS** → Enable NFS

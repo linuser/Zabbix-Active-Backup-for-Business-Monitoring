@@ -15,7 +15,30 @@ Das Monitoring besteht aus zwei Teilen:
 
 ---
 
+## Voraussetzungen
+
+Vor der Installation sicherstellen:
+
+- **Synology DSM** mit **Active Backup for Business installiert** und **mindestens einer eingerichteten Datensicherung** — ohne laufende ABB-Aufgabe gibt es keine Daten zu überwachen.
+- **`sqlite3` auf der NAS** (bei DSM i. d. R. vorhanden — `which sqlite3`).
+- **Zabbix 6.4+** (das Template nutzt JavaScript-Preprocessing).
+- **SSH-Zugang** zur NAS (`admin`; die DSM-Aufgaben laufen als `root`) **und** zum Zabbix-Proxy/-Server (`root`).
+- **Netzwerk:** der Zabbix-Proxy muss die NAS per **NFS** erreichen (Firewall/Route).
+- Dieses **Repository** geklont/heruntergeladen (enthält `synology/`, `zabbix/`, `template/`).
+
+---
+
 ## Schritt 1: NFS-Freigabe (Synology)
+
+Auf der NAS wird **genau ein gemeinsamer Ordner** benötigt: **`monitoring`** (= `/volume1/monitoring`). Darin legen die Skripte (Schritt 2) zwei Unterordner automatisch an:
+
+```
+/volume1/monitoring/
+├── scripts/   ← Export-Skripte (abb_export.sh, abb_daily_summary.sh)
+└── abb/       ← erzeugte CSV-Dateien (die der Zabbix-Proxy per NFS liest)
+```
+
+Genau dieser eine Ordner wird **read-only** per NFS freigegeben — und genau ihn mountet der Zabbix-Proxy in Schritt 3.
 
 1. **DSM → Systemsteuerung → Gemeinsamer Ordner** → `monitoring` erstellen
 2. **DSM → Systemsteuerung → Dateidienste → NFS** → NFS aktivieren
