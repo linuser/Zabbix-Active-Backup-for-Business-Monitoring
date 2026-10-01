@@ -250,17 +250,24 @@ check_installation() {
       age=$(( $(date +%s) - mtime ))
       if [ "$age" -lt 900 ]; then ok "CSV age: ${age}s (fresh)"; else warn "CSV age: ${age}s (stale >900s)"; fi
 
-      local count
-      count="$(sudo -u "$ZBX_USER" "${ZBX_EXT_DIR}/abb.sh" device_count 2>/dev/null || echo "FAIL")"
-      if [ "$count" != "FAIL" ]; then ok "device_count=$count (as $ZBX_USER)"; else fail "abb.sh fails as $ZBX_USER"; errors=$((errors+1)); fi
+      # Die folgenden Tests laufen als Zabbix-User (sudo). Ohne root bzw. ohne
+      # passwortloses sudo wuerden sie faelschlich fehlschlagen -> dann lieber
+      # mit Hinweis ueberspringen, statt einen Fehler zu melden.
+      if [ "$(id -u)" = "0" ] || sudo -n -u "$ZBX_USER" true 2>/dev/null; then
+        local count
+        count="$(sudo -u "$ZBX_USER" "${ZBX_EXT_DIR}/abb.sh" device_count 2>/dev/null || echo "FAIL")"
+        if [ "$count" != "FAIL" ]; then ok "device_count=$count (as $ZBX_USER)"; else fail "abb.sh fails as $ZBX_USER"; errors=$((errors+1)); fi
 
-      local check_val
-      check_val="$(sudo -u "$ZBX_USER" "${ZBX_EXT_DIR}/abb.sh" check 900 "$(dirname "$ZBX_CSV_PATH")" 2>/dev/null | head -1)"
-      if [ "$check_val" = "0" ]; then
-        ok "check passed"
+        local check_val
+        check_val="$(sudo -u "$ZBX_USER" "${ZBX_EXT_DIR}/abb.sh" check 900 "$(dirname "$ZBX_CSV_PATH")" 2>/dev/null | head -1)"
+        if [ "$check_val" = "0" ]; then
+          ok "check passed"
+        else
+          fail "check failed (health=${check_val:-empty})"
+          errors=$((errors+1))
+        fi
       else
-        fail "check failed (health=${check_val:-empty})"
-        errors=$((errors+1))
+        warn "Tests als '$ZBX_USER' uebersprungen (kein root/sudo) - '--check' dafuer als root ausfuehren"
       fi
     fi
   fi
@@ -373,5 +380,6 @@ case "${1:-}" in
     echo "Usage: $0 [synology|zabbix|all|--check|--uninstall]"
     echo "  No args = interactive mode"
     ;;
-  *)           main_interactive ;;
+  "")          main_interactive ;;
+  *)           die "Unbekanntes Argument: '$1' (siehe $0 --help)" ;;
 esac
