@@ -193,6 +193,10 @@ Host → **Makros** → **Geerbte und Host-Makros** → nach Bedarf überschreib
 4. Nach ca. 1 Stunde läuft die Discovery und Geräte-Items erscheinen
 5. **Dashboards → ABB Monitoring** für die Übersicht
 
+Die ABB-Aufgaben selbst (DSM → Active Backup for Business → Aktivitäten) zeigen den Status, den dieses Monitoring erfasst und nach Zabbix bringt — z. B. „Teilweise abgeschlossen":
+
+![Active Backup for Business – Aufgabenverlauf mit Backup-Status](docs/images/dsm-abb-task-history.png)
+
 ---
 
 ## Fehlerbehebung
@@ -206,6 +210,10 @@ Host → **Makros** → **Geerbte und Host-Makros** → nach Bedarf überschreib
 | Alle Geräte „Unknown" (99) | DEVICEID stimmt nicht | CSV-Format prüfen |
 | Template-Import schlägt fehl | Zabbix zu alt | 6.4+ mit JS-Preprocessing erforderlich |
 | Export läuft nur ~1 h/Tag, dann CSV veraltet (`check` wird „Problem") | DSM-Aufgabe: „Letzte Ausführungszeit" zu früh gesetzt (z. B. `00:55`) → Export stoppt nach dem Fenster, 23 h still | Im Aufgabenplaner → Aufgabe bearbeiten → Zeitplan: **„Letzte Ausführungszeit" auf `23:55`** (Start `00:00`, alle 5 Min) |
+
+**Beispiel der Zeitfenster-Falle** — „Letzte Ausführungszeit" steht auf `00:55` statt `23:55`. Der Export läuft dann nur von 00:00 bis 00:55 und steht die restlichen 23 h still:
+
+![DSM-Aufgabenplaner – Zeitplan-Tab mit zu enger „Letzte Ausführungszeit"](docs/images/dsm-schedule-window.png)
 
 ---
 

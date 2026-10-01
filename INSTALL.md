@@ -193,6 +193,10 @@ Host → **Macros** → **Inherited and host macros** → override as needed (se
 4. After ~1 hour, LLD runs and per-device items appear
 5. **Dashboards → ABB Monitoring** for the overview
 
+The ABB tasks themselves (DSM → Active Backup for Business → Activities) show the status this monitoring captures and forwards to Zabbix — e.g. "Partially completed":
+
+![Active Backup for Business – task history with backup status](docs/images/dsm-abb-task-history.png)
+
 ---
 
 ## Troubleshooting
@@ -206,6 +210,10 @@ Host → **Macros** → **Inherited and host macros** → override as needed (se
 | All devices "Unknown" (99) | DEVICEID mismatch | Check CSV format |
 | Template import fails | Zabbix too old | Requires 6.4+ with JS preprocessing |
 | Export runs only ~1 h/day, then CSV goes stale (`check` turns "Problem") | DSM task: "Last run time" set too early (e.g. `00:55`) → export stops after the window, idle 23 h | Task Scheduler → edit task → Schedule: **set "Last run time" to `23:55`** (start `00:00`, every 5 min) |
+
+**Example of the time-window trap** — "Last run time" set to `00:55` instead of `23:55`. The export then only runs from 00:00 to 00:55 and sits idle for the remaining 23 h:
+
+![DSM Task Scheduler – Schedule tab with too-narrow "Last run time"](docs/images/dsm-schedule-window.png)
 
 ---
 
