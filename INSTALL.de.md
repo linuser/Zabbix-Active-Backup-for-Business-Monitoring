@@ -137,6 +137,8 @@ Sollte 7 Spalten zeigen mit `LAST_SUCCESS_TS` als letzter Spalte.
 
 ## Schritt 3: NFS-Mount (Zabbix Proxy)
 
+Die NAS-Freigabe `<nas-ip>:/volume1/monitoring` wird auf dem **Zabbix-Proxy** nach **`/mnt/synology/monitoring`** gemountet. Die CSVs liegen dann unter `/mnt/synology/monitoring/abb/` — genau der Pfad, den `abb.sh` liest (`ZBX_CSV_PATH`).
+
 ### Test-Mount
 
 ```bash

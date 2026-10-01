@@ -137,6 +137,8 @@ Should show 7 columns with `LAST_SUCCESS_TS` as the last column.
 
 ## Step 3: NFS Mount (Zabbix Proxy)
 
+The NAS share `<nas-ip>:/volume1/monitoring` is mounted on the **Zabbix proxy** at **`/mnt/synology/monitoring`**. The CSVs then live under `/mnt/synology/monitoring/abb/` — exactly the path `abb.sh` reads (`ZBX_CSV_PATH`).
+
 ### Test mount
 
 ```bash
