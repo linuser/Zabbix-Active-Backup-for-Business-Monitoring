@@ -24,11 +24,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Formatting
 ###############################################################################
 BOLD='\033[1m'; GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
-ok()   { printf "  ${GREEN}[✓]${NC} %s\n" "$*"; }
-fail() { printf "  ${RED}[✗]${NC} %s\n" "$*"; }
-warn() { printf "  ${YELLOW}[!]${NC} %s\n" "$*"; }
+ok()   { printf '  %b[✓]%b %s\n' "$GREEN" "$NC" "$*"; }
+fail() { printf '  %b[✗]%b %s\n' "$RED" "$NC" "$*"; }
+warn() { printf '  %b[!]%b %s\n' "$YELLOW" "$NC" "$*"; }
 die()  { fail "$*"; exit 1; }
-ask()  { printf "${BOLD}%s${NC} " "$1" >&2; read -r ans; echo "$ans"; }
+ask()  { printf '%b%s%b ' "$BOLD" "$1" "$NC" >&2; local ans=""; read -r ans || true; printf '%s' "$ans"; }
+hdr()  { printf '%b%s%b\n' "$BOLD" "$1" "$NC"; }
+info() { printf '  %s\n' "$*"; }
 
 ###############################################################################
 # Platform detection
@@ -52,10 +54,15 @@ check_root() {
 ###############################################################################
 install_synology() {
   echo ""
-  printf "${BOLD}═══ Installing Synology Scripts ═══${NC}\n"
+  hdr "═══ Installing Synology Scripts ═══"
 
   # Checks
-  [ -x "${SYN_DB_DIR}/../usr/bin/sqlite3" ] || [ -x /usr/bin/sqlite3 ] || die "sqlite3 not found"
+  SYN_SQLITE=""
+  for c in /usr/bin/sqlite3 /bin/sqlite3; do
+    [ -x "$c" ] && { SYN_SQLITE="$c"; break; }
+  done
+  [ -n "$SYN_SQLITE" ] || SYN_SQLITE="$(command -v sqlite3 2>/dev/null || true)"
+  [ -n "$SYN_SQLITE" ] || die "sqlite3 not found"
   [ -r "${SYN_DB_DIR}/activity.db" ] || die "activity.db not found in ${SYN_DB_DIR}"
   [ -r "${SYN_DB_DIR}/config.db" ]   || die "config.db not found in ${SYN_DB_DIR}"
 
@@ -66,27 +73,56 @@ install_synology() {
   chmod 755 "${SYN_SCRIPT_DIR}"/*.sh
   ok "Scripts installed to ${SYN_SCRIPT_DIR}"
 
-  # Cron
-  local ans
-  ans="$(ask "Install cron jobs? [Y/n]")"
-  if [ "${ans:-Y}" != "n" ] && [ "${ans:-Y}" != "N" ]; then
-    local crontab_file="/etc/crontab"
-    local marker="# ABB-MONITORING"
+  # Zeitsteuerung
+  #
+  # WICHTIG: Auf DSM NICHT nach /etc/crontab schreiben. DSM generiert diese
+  # Datei aus seiner eigenen Aufgaben-Datenbank neu (alle Zeilen dort lauten
+  # "synoschedtask --run id=N") — bei Updates, Neustarts und jeder Aenderung
+  # im Aufgabenplaner. Ein von Hand angehaengter Eintrag verschwindet dabei
+  # kommentarlos. Genau das ist in der Praxis passiert: der Export lief nach
+  # der Installation kein einziges Mal, ohne jede Fehlermeldung.
+  # Der Aufgabenplaner ist der einzige Weg, der ein DSM-Update ueberlebt.
+  local env_prefix="ABB_DIR='${SYN_ABB_DIR}' ABB_DB_DIR='${SYN_DB_DIR}' ABB_SQLITE='${SYN_SQLITE}'"
+  local cmd_export="${env_prefix} ${SYN_SCRIPT_DIR}/abb_export.sh"
+  local cmd_summary="ABB_DIR='${SYN_ABB_DIR}' ${SYN_SCRIPT_DIR}/abb_daily_summary.sh"
 
-    # Remove old entries
-    sed -i "/${marker}/d" "$crontab_file" 2>/dev/null || true
-
-    cat >> "$crontab_file" << EOF
-*/5 * * * * root ${SYN_SCRIPT_DIR}/abb_export.sh ${marker}
-55 23 * * * root ${SYN_SCRIPT_DIR}/abb_daily_summary.sh ${marker}
-EOF
-    ok "Cron jobs installed (export every 5min, summary 23:55)"
+  if [ -f /etc/synoinfo.conf ] || command -v synoschedtask >/dev/null 2>&1; then
+    echo ""
+    warn "Zeitsteuerung muss im DSM-Aufgabenplaner angelegt werden:"
+    info "  Systemsteuerung → Aufgabenplaner → Erstellen → Geplante Aufgabe →"
+    info "  Benutzerdefiniertes Skript"
+    echo ""
+    info "  Aufgabe 1 — Export, alle 5 Minuten (Benutzer: root)"
+    info "    Zeitplan: taeglich, alle 5 Minuten wiederholen"
+    printf '      %b%s%b\n' "$BOLD" "$cmd_export" "$NC"
+    echo ""
+    info "  Aufgabe 2 — Tageszusammenfassung, 23:55 (Benutzer: root)"
+    printf '      %b%s%b\n' "$BOLD" "$cmd_summary" "$NC"
+    echo ""
+    warn "Ein Eintrag in /etc/crontab wird von DSM frueher oder spaeter"
+    warn "geloescht — deshalb legt der Installer ihn bewusst NICHT an."
+    info "Nach dem Anlegen pruefen mit:  $0 --check"
+  else
+    # Kein DSM: normales cron, hier ist /etc/crontab der richtige Ort.
+    local ans
+    ans="$(ask "Install cron jobs? [Y/n]")"
+    if [ "${ans:-Y}" != "n" ] && [ "${ans:-Y}" != "N" ]; then
+      local crontab_file="/etc/crontab"
+      local marker="# ABB-MONITORING"
+      sed -i "/ABB-MONITORING/d" "$crontab_file" 2>/dev/null || true
+      # Tabs zwischen Zeitplan, Benutzer und Kommando: manche crond-Varianten
+      # ignorieren leerzeichengetrennte Zeilen stillschweigend.
+      printf '*/5 * * * *\troot\t%s %s\n' "$cmd_export"  "$marker" >> "$crontab_file"
+      printf '55 23 * * *\troot\t%s %s\n' "$cmd_summary" "$marker" >> "$crontab_file"
+      ok "Cron-Eintraege angelegt (Export alle 5 Min, Zusammenfassung 23:55)"
+    fi
   fi
 
   # Initial run
   ans="$(ask "Run initial export now? [Y/n]")"
   if [ "${ans:-Y}" != "n" ] && [ "${ans:-Y}" != "N" ]; then
-    ABB_DIR="$SYN_ABB_DIR" "${SYN_SCRIPT_DIR}/abb_export.sh"
+    ABB_DIR="$SYN_ABB_DIR" ABB_DB_DIR="$SYN_DB_DIR" ABB_SQLITE="$SYN_SQLITE" \
+      "${SYN_SCRIPT_DIR}/abb_export.sh"
     if [ -f "${SYN_ABB_DIR}/ActiveBackupExport.csv" ]; then
       local cols
       cols="$(head -1 "${SYN_ABB_DIR}/ActiveBackupExport.csv" | awk -F',' '{print NF}')"
@@ -106,7 +142,7 @@ EOF
 ###############################################################################
 install_zabbix() {
   echo ""
-  printf "${BOLD}═══ Installing Zabbix Scripts ═══${NC}\n"
+  hdr "═══ Installing Zabbix Scripts ═══"
 
   id "$ZBX_USER" >/dev/null 2>&1 || die "User $ZBX_USER not found"
   [ -d "$ZBX_EXT_DIR" ] || die "External scripts dir not found: $ZBX_EXT_DIR"
@@ -115,6 +151,22 @@ install_zabbix() {
   cp -v "${SCRIPT_DIR}/zabbix/abb-enh.sh" "${ZBX_EXT_DIR}/"
   chmod 755 "${ZBX_EXT_DIR}/abb.sh" "${ZBX_EXT_DIR}/abb-enh.sh"
   chown root:"$ZBX_USER" "${ZBX_EXT_DIR}/abb.sh" "${ZBX_EXT_DIR}/abb-enh.sh"
+
+  # Zabbix invokes external scripts with a bare environment, so the configured
+  # paths must be baked into the installed copies — an exported ABB_CSV_PATH
+  # would never reach them.
+  if [ "$ZBX_CSV_PATH" != "/mnt/synology/monitoring/abb" ] || [ "$ZBX_USER" != "zabbix" ]; then
+    # Escape sed replacement metacharacters (\, the | delimiter, and &) so a
+    # path containing them can't corrupt the substitution.
+    local csv_esc user_esc
+    csv_esc="${ZBX_CSV_PATH//\\/\\\\}"; csv_esc="${csv_esc//&/\\&}"; csv_esc="${csv_esc//|/\\|}"
+    user_esc="${ZBX_USER//\\/\\\\}";    user_esc="${user_esc//&/\\&}"; user_esc="${user_esc//|/\\|}"
+    sed -i "s|\${ABB_CSV_PATH:-[^}]*}|\${ABB_CSV_PATH:-${csv_esc}}|" \
+      "${ZBX_EXT_DIR}/abb.sh" "${ZBX_EXT_DIR}/abb-enh.sh"
+    sed -i "s|\${ABB_ZBX_USER:-[^}]*}|\${ABB_ZBX_USER:-${user_esc}}|" \
+      "${ZBX_EXT_DIR}/abb.sh"
+    ok "Defaults baked in: CSV_PATH=${ZBX_CSV_PATH}, user=${ZBX_USER}"
+  fi
   ok "Scripts installed to ${ZBX_EXT_DIR}"
 
   # Check NFS mount
@@ -147,45 +199,74 @@ install_zabbix() {
 ###############################################################################
 check_installation() {
   echo ""
-  printf "${BOLD}═══ Installation Check ═══${NC}\n"
+  hdr "═══ Installation Check ═══"
   local errors=0
 
   # Synology side
   if [ -f /etc/synoinfo.conf ]; then
-    printf "\n${BOLD}Synology:${NC}\n"
-    [ -x "${SYN_SCRIPT_DIR}/abb_export.sh" ] && ok "abb_export.sh" || { fail "abb_export.sh missing"; errors=$((errors+1)); }
-    [ -f "${SYN_ABB_DIR}/ActiveBackupExport.csv" ] && ok "CSV exists" || { fail "CSV missing"; errors=$((errors+1)); }
+    printf "\n"; hdr "Synology:"
+    if [ -x "${SYN_SCRIPT_DIR}/abb_export.sh" ]; then ok "abb_export.sh"; else fail "abb_export.sh missing"; errors=$((errors+1)); fi
     if [ -f "${SYN_ABB_DIR}/ActiveBackupExport.csv" ]; then
+      ok "CSV exists"
       local cols
       cols="$(head -1 "${SYN_ABB_DIR}/ActiveBackupExport.csv" | awk -F',' '{print NF}')"
-      [ "$cols" = "7" ] && ok "CSV has 7 columns (LAST_SUCCESS_TS present)" || { warn "CSV has $cols columns (expected 7)"; }
+      if [ "$cols" = "7" ]; then ok "CSV has 7 columns (LAST_SUCCESS_TS present)"; else warn "CSV has $cols columns (expected 7)"; fi
+
+      # Die Zeitsteuerung wird am ALTER der CSV gemessen, nicht an einem
+      # Eintrag in /etc/crontab. Der alte Test (grep auf abb_export.sh) war
+      # wertlos: auf DSM gehoert die Aufgabe in den Aufgabenplaner und taucht
+      # in /etc/crontab nur als "synoschedtask --run id=N" auf. Er meldete
+      # "No cron entry found" als blosse Warnung — und genau deshalb blieb
+      # monatelang unbemerkt, dass der Export ueberhaupt nie lief.
+      local csv_mtime csv_age
+      csv_mtime="$(stat -c '%Y' "${SYN_ABB_DIR}/ActiveBackupExport.csv" 2>/dev/null || echo 0)"
+      csv_age=$(( $(date +%s) - csv_mtime ))
+      if [ "$csv_age" -lt 900 ]; then
+        ok "Zeitsteuerung laeuft (CSV ${csv_age}s alt)"
+      else
+        fail "CSV ist ${csv_age}s alt — die Zeitsteuerung laeuft NICHT"
+        info "  DSM:    Systemsteuerung → Aufgabenplaner pruefen"
+        info "  sonst:  grep ABB-MONITORING /etc/crontab"
+        errors=$((errors+1))
+      fi
+    else
+      fail "CSV missing"; errors=$((errors+1))
     fi
-    grep -q "abb_export.sh" /etc/crontab 2>/dev/null && ok "Cron active" || { warn "No cron entry found"; }
   fi
 
-  # Zabbix side
-  if id "$ZBX_USER" >/dev/null 2>&1; then
-    printf "\n${BOLD}Zabbix:${NC}\n"
-    [ -x "${ZBX_EXT_DIR}/abb.sh" ] && ok "abb.sh" || { fail "abb.sh missing"; errors=$((errors+1)); }
-    [ -d "$ZBX_CSV_PATH" ] && ok "CSV path reachable" || { fail "CSV path missing: $ZBX_CSV_PATH"; errors=$((errors+1)); }
+  # Zabbix-Seite
+  # Nur pruefen, wenn das externalscripts-Verzeichnis existiert. Die blosse
+  # Existenz eines "zabbix"-Benutzers reicht nicht: auf der NAS gibt es eine
+  # zabbix-Gruppe (fuer den NFS-Zugriff), aber keine Zabbix-Installation —
+  # der Check meldete dort zwei Fehler, die gar keine sind.
+  if id "$ZBX_USER" >/dev/null 2>&1 && [ -d "$ZBX_EXT_DIR" ]; then
+    printf "\n"; hdr "Zabbix:"
+    if [ -x "${ZBX_EXT_DIR}/abb.sh" ]; then ok "abb.sh"; else fail "abb.sh missing"; errors=$((errors+1)); fi
+    if [ -d "$ZBX_CSV_PATH" ]; then ok "CSV path reachable"; else fail "CSV path missing: $ZBX_CSV_PATH"; errors=$((errors+1)); fi
 
     if [ -f "${ZBX_CSV_PATH}/ActiveBackupExport.csv" ]; then
-      local age
-      age=$(( $(date +%s) - $(stat -c '%Y' "${ZBX_CSV_PATH}/ActiveBackupExport.csv") ))
-      [ "$age" -lt 900 ] && ok "CSV age: ${age}s (fresh)" || warn "CSV age: ${age}s (stale >900s)"
+      local mtime age
+      mtime="$(stat -c '%Y' "${ZBX_CSV_PATH}/ActiveBackupExport.csv" 2>/dev/null || echo 0)"
+      age=$(( $(date +%s) - mtime ))
+      if [ "$age" -lt 900 ]; then ok "CSV age: ${age}s (fresh)"; else warn "CSV age: ${age}s (stale >900s)"; fi
 
       local count
       count="$(sudo -u "$ZBX_USER" "${ZBX_EXT_DIR}/abb.sh" device_count 2>/dev/null || echo "FAIL")"
-      [ "$count" != "FAIL" ] && ok "device_count=$count (as $ZBX_USER)" || { fail "abb.sh fails as $ZBX_USER"; errors=$((errors+1)); }
+      if [ "$count" != "FAIL" ]; then ok "device_count=$count (as $ZBX_USER)"; else fail "abb.sh fails as $ZBX_USER"; errors=$((errors+1)); fi
 
-      local check
-      check="$(sudo -u "$ZBX_USER" "${ZBX_EXT_DIR}/abb.sh" check 900 2>/dev/null; echo $?)"
-      [ "$check" = "0" ] || [ "$(echo "$check" | tail -1)" = "0" ] && ok "check passed" || { fail "check failed"; errors=$((errors+1)); }
+      local check_val
+      check_val="$(sudo -u "$ZBX_USER" "${ZBX_EXT_DIR}/abb.sh" check 900 "$(dirname "$ZBX_CSV_PATH")" 2>/dev/null | head -1)"
+      if [ "$check_val" = "0" ]; then
+        ok "check passed"
+      else
+        fail "check failed (health=${check_val:-empty})"
+        errors=$((errors+1))
+      fi
     fi
   fi
 
   echo ""
-  [ "$errors" = "0" ] && ok "All checks passed" || fail "$errors error(s) found"
+  if [ "$errors" = "0" ]; then ok "All checks passed"; else fail "$errors error(s) found"; fi
 }
 
 ###############################################################################
@@ -193,17 +274,35 @@ check_installation() {
 ###############################################################################
 uninstall() {
   echo ""
-  printf "${BOLD}═══ Uninstall ═══${NC}\n"
+  hdr "═══ Uninstall ═══"
   local ans
   ans="$(ask "This will remove all ABB monitoring scripts. Continue? [y/N]")"
   [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { echo "Aborted."; exit 0; }
 
-  # Synology
-  rm -f "${SYN_SCRIPT_DIR}/abb_export.sh" "${SYN_SCRIPT_DIR}/abb_daily_summary.sh" 2>/dev/null && ok "Synology scripts removed" || true
-  sed -i '/ABB-MONITORING/d' /etc/crontab 2>/dev/null && ok "Cron entries removed" || true
+  # rm -f always succeeds, so check existence first instead of reporting
+  # "removed" for things that were never installed.
+  local removed=0
 
-  # Zabbix
-  rm -f "${ZBX_EXT_DIR}/abb.sh" "${ZBX_EXT_DIR}/abb-enh.sh" 2>/dev/null && ok "Zabbix scripts removed" || true
+  # Synology
+  for f in "${SYN_SCRIPT_DIR}/abb_export.sh" "${SYN_SCRIPT_DIR}/abb_daily_summary.sh" \
+           "${ZBX_EXT_DIR}/abb.sh" "${ZBX_EXT_DIR}/abb-enh.sh"; do
+    if [ -e "$f" ]; then rm -f "$f" && ok "Removed $f" && removed=$((removed+1)); fi
+  done
+
+  # Cron
+  if grep -q 'ABB-MONITORING' /etc/crontab 2>/dev/null; then
+    sed -i '/ABB-MONITORING/d' /etc/crontab && ok "Cron entries removed"
+  else
+    warn "No cron entries found"
+  fi
+  # Auf DSM liegt die Zeitsteuerung im Aufgabenplaner, nicht in /etc/crontab —
+  # der Installer kann sie dort nicht entfernen.
+  if [ -f /etc/synoinfo.conf ]; then
+    warn "DSM: Aufgaben im Aufgabenplaner manuell loeschen"
+    info "  Systemsteuerung → Aufgabenplaner → abb_export / abb_daily_summary"
+  fi
+
+  [ "$removed" = "0" ] && warn "No scripts found to remove"
 
   warn "CSV files and template NOT removed (manual cleanup if needed)"
   ok "Uninstall complete"
@@ -236,15 +335,15 @@ main_interactive() {
   local platform
   platform="$(detect_platform)"
 
-  printf "\n${BOLD}═══ ABB Monitoring Installer ═══${NC}\n"
+  printf "\n"; hdr "═══ ABB Monitoring Installer ═══"
   ok "Detected platform: $platform"
 
-  printf "  ${BOLD}1)${NC} Install Synology export scripts\n"
-  printf "  ${BOLD}2)${NC} Install Zabbix external scripts\n"
-  printf "  ${BOLD}3)${NC} Install both (same host)\n"
-  printf "  ${BOLD}4)${NC} Check installation\n"
-  printf "  ${BOLD}5)${NC} Uninstall\n"
-  printf "  ${BOLD}q)${NC} Quit\n"
+  printf "  %b1)%b Install Synology export scripts\n" "$BOLD" "$NC"
+  printf "  %b2)%b Install Zabbix external scripts\n" "$BOLD" "$NC"
+  printf "  %b3)%b Install both (same host)\n" "$BOLD" "$NC"
+  printf "  %b4)%b Check installation\n" "$BOLD" "$NC"
+  printf "  %b5)%b Uninstall\n" "$BOLD" "$NC"
+  printf "  %bq)%b Quit\n" "$BOLD" "$NC"
 
   local choice
   choice="$(ask "Select [1-5/q]:")"

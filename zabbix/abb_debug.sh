@@ -9,6 +9,10 @@
 
 set -uo pipefail
 
+# Zahlen C-formatiert halten: unter de_DE.UTF-8 macht awk aus "%.1f"
+# ein "21,4" – in kommaseparierten Ausgaben und JSON ist das fatal.
+export LC_ALL=C
+
 CSV_PATH="${1:-/mnt/synology/monitoring/abb}"
 CSV_EXPORT="${CSV_PATH}/ActiveBackupExport.csv"
 CSV_STATS="${CSV_PATH}/ActiveBackupStats.csv"
@@ -23,11 +27,11 @@ NOW="$(date +%s)"
 BOLD='\033[1m'; GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; NC='\033[0m'
 
-ok()   { printf "  ${GREEN}[✓]${NC} %s\n" "$*"; PASS=$((PASS+1)); }
-fail() { printf "  ${RED}[✗]${NC} %s\n" "$*"; FAIL=$((FAIL+1)); }
-warn() { printf "  ${YELLOW}[!]${NC} %s\n" "$*"; WARN=$((WARN+1)); }
-info() { printf "  ${CYAN}[i]${NC} %s\n" "$*"; }
-section() { printf "\n${BOLD}═══ %s ═══${NC}\n" "$*"; }
+ok()   { printf '  %b[✓]%b %s\n' "$GREEN" "$NC" "$*"; PASS=$((PASS+1)); }
+fail() { printf '  %b[✗]%b %s\n' "$RED" "$NC" "$*"; FAIL=$((FAIL+1)); }
+warn() { printf '  %b[!]%b %s\n' "$YELLOW" "$NC" "$*"; WARN=$((WARN+1)); }
+info() { printf '  %b[i]%b %s\n' "$CYAN" "$NC" "$*"; }
+section() { printf '\n%b═══ %s ═══%b\n' "$BOLD" "$*" "$NC"; }
 
 PASS=0; FAIL=0; WARN=0
 
@@ -67,12 +71,19 @@ if [ -f "$CSV_EXPORT" ]; then
   DEVICES="$(awk 'NR>1{c++}END{print c+0}' "$CSV_EXPORT")"
   ok "Geräte in CSV: $DEVICES"
 
-  # Hostnamen mit Quotes prüfen
+  # Hostnamen mit Quotes prüfen (sqlite quotet Felder mit Komma/Leerzeichen)
   QUOTED="$(awk -F',' 'NR>1 && $2~/^"/' "$CSV_EXPORT" | wc -l)"
   if [ "$QUOTED" -gt 0 ]; then
-    warn "Hostnamen mit Anführungszeichen (Leerzeichen): $QUOTED Gerät(e)"
+    warn "Hostnamen in Anführungszeichen (Leerzeichen ok): $QUOTED Gerät(e)"
     awk -F',' 'NR>1 && $2~/^"/{print "       → "$2}' "$CSV_EXPORT"
-    info "abb.sh muss gsub(/\"/, \"\", host) enthalten (v3.0+)"
+    info "abb.sh entfernt diese Quotes via gsub(/\"/, \"\", host) (v3.0+)."
+    info "Kommas im Namen werden vom Export bereits zu Leerzeichen ersetzt (v3.0+)."
+  fi
+
+  # Feldanzahl-Konsistenz prüfen (ein Komma im Namen würde Felder verschieben)
+  BADCOLS="$(awk -F',' 'NR>1 && NF!=7{c++}END{print c+0}' "$CSV_EXPORT")"
+  if [ "$BADCOLS" -gt 0 ]; then
+    fail "$BADCOLS Zeile(n) mit != 7 Feldern — Komma/Trennzeichen im Namen? Export-Skript v3.0+ nötig"
   fi
 
   # LAST_SUCCESS_TS prüfen
@@ -102,7 +113,7 @@ fi
 echo ""
 if [ -f "$CSV_STATS" ]; then
   ok "Stats-CSV vorhanden: $CSV_STATS"
-  info "Inhalt: $(cat "$CSV_STATS" | sed 's/^/       /')"
+  info "Inhalt: $(sed 's/^/       /' "$CSV_STATS")"
 else
   warn "Stats-CSV nicht gefunden: $CSV_STATS (failed_today/success_today funktionieren nicht)"
 fi
@@ -241,16 +252,16 @@ section "5. Zusammenfassung"
 ###############################################################################
 
 echo ""
-printf "  ${GREEN}Bestanden: $PASS${NC}  "
-printf "${RED}Fehler: $FAIL${NC}  "
-printf "${YELLOW}Warnungen: $WARN${NC}\n"
+printf "  %bBestanden: %s%b  " "$GREEN" "$PASS" "$NC"
+printf "%bFehler: %s%b  " "$RED" "$FAIL" "$NC"
+printf "%bWarnungen: %s%b\n" "$YELLOW" "$WARN" "$NC"
 echo ""
 
 if [ "$FAIL" -gt 0 ]; then
-  printf "  ${RED}${BOLD}Es gibt $FAIL Fehler — bitte oben prüfen.${NC}\n"
+  printf '  %b%bEs gibt %s Fehler — bitte oben prüfen.%b\n' "$RED" "$BOLD" "$FAIL" "$NC"
 elif [ "$WARN" -gt 0 ]; then
-  printf "  ${YELLOW}${BOLD}Läuft, aber $WARN Warnung(en) beachten.${NC}\n"
+  printf '  %b%bLäuft, aber %s Warnung(en) beachten.%b\n' "$YELLOW" "$BOLD" "$WARN" "$NC"
 else
-  printf "  ${GREEN}${BOLD}Alles OK!${NC}\n"
+  printf '  %b%bAlles OK!%b\n' "$GREEN" "$BOLD" "$NC"
 fi
 echo ""

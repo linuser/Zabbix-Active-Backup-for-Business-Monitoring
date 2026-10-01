@@ -10,6 +10,10 @@
 
 set -euo pipefail
 
+# Zahlen C-formatiert halten: unter de_DE.UTF-8 macht awk aus "%.1f"
+# ein "21,4" – in kommaseparierten Ausgaben und JSON ist das fatal.
+export LC_ALL=C
+
 CSV_PATH="${ABB_CSV_PATH:-/mnt/synology/monitoring/abb}"
 CSV_EXPORT="${CSV_PATH}/ActiveBackupExport.csv"
 NOW="$(date +%s)"
@@ -79,10 +83,9 @@ do_failed_info() {
   [ -r "$CSV_EXPORT" ] || { echo "CSV not readable: $CSV_EXPORT"; exit 1; }
 
   local found=0
-  awk -F',' -v OFS='\t' 'NR>1 && $1!="" && ($3+0==4||$3+0==5||$3+0==3) {
-    gsub(/"/, "", $2)
-    print $2, $3+0, $4+0, $5+0, (NF>=7 && $7+0>0 ? $7+0 : 0)
-  }' "$CSV_EXPORT" | while IFS=$'\t' read -r host status bytes dur lss; do
+  # Process substitution (not a pipe) so $found survives the loop — a pipe
+  # would run the while in a subshell and "All devices OK" would always print.
+  while IFS=$'\t' read -r host status bytes dur lss; do
     lsa=$(( lss > 0 ? NOW - lss : 2147483647 ))
     found=1
     printf '%s: %s (bytes=%s, duration=%s, last_success=%s ago)\n' \
@@ -91,7 +94,10 @@ do_failed_info() {
       "$(format_bytes "$bytes")" \
       "$(format_duration "$dur")" \
       "$(format_age "$lsa")"
-  done
+  done < <(awk -F',' -v OFS='\t' 'NR>1 && $1!="" && ($3+0==4||$3+0==5||$3+0==3) {
+    gsub(/"/, "", $2)
+    print $2, $3+0, $4+0, $5+0, (NF>=7 && $7+0>0 ? $7+0 : 0)
+  }' "$CSV_EXPORT")
 
   [ "$found" = "0" ] && echo "All devices OK"
   return 0

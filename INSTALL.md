@@ -205,6 +205,7 @@ Host → **Macros** → **Inherited and host macros** → override as needed (se
 | Discovery finds no devices | JSON master empty | Fix JSON item first |
 | All devices "Unknown" (99) | DEVICEID mismatch | Check CSV format |
 | Template import fails | Zabbix too old | Requires 6.4+ with JS preprocessing |
+| Export runs only ~1 h/day, then CSV goes stale (`check` turns "Problem") | DSM task: "Last run time" set too early (e.g. `00:55`) → export stops after the window, idle 23 h | Task Scheduler → edit task → Schedule: **set "Last run time" to `23:55`** (start `00:00`, every 5 min) |
 
 ---
 

@@ -35,7 +35,7 @@ Monitor [Synology Active Backup for Business](https://www.synology.com/en-global
 
 ```bash
 git clone https://github.com/linuser/Zabbix-Active-Backup-for-Business-Monitoring.git
-cd synology-abb-zabbix
+cd Zabbix-Active-Backup-for-Business-Monitoring
 sudo ./install.sh
 ```
 

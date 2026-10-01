@@ -10,6 +10,10 @@
 
 set -euo pipefail
 
+# Zahlen müssen C-formatiert sein: unter de_DE.UTF-8 schreibt awk "%.1f" als
+# "21,4" – in JSON und in kommaseparierten Listen ist das fatal.
+export LC_ALL=C
+
 ###############################################################################
 # Configuration
 ###############################################################################
@@ -23,8 +27,13 @@ NOW="$(date +%s)"
 ###############################################################################
 # Helpers
 ###############################################################################
-log_debug() { [ "$DEBUG" = "1" ] && echo "DEBUG: $*" >&2 || true; }
+log_debug() { if [ "$DEBUG" = "1" ]; then echo "DEBUG: $*" >&2; fi; }
 die()       { echo "ERROR: $*" >&2; exit 1; }
+
+require_csv() {
+  # Fail with a readable message instead of letting awk emit its own error.
+  [ -r "$CSV_EXPORT" ] || die "CSV not readable: $CSV_EXPORT"
+}
 
 csv_field() {
   # $1=file  $2=deviceid  $3=field_number (1-based)
@@ -51,9 +60,12 @@ do_check() {
       log_debug "Mount not found: $mpoint"; echo 1; exit 0
     fi
 
-    # Prefer NFS/CIFS line over autofs if both present
+    # Prefer NFS/CIFS line over autofs if both present.
+    # awk (not grep|head) so an autofs-only result doesn't make the pipeline
+    # exit non-zero and abort the function under `set -euo pipefail` — that
+    # would crash before the autofs-tolerant branch below could run.
     local check_line
-    check_line="$(echo "$mnt_output" | grep -v 'autofs' | head -1)"
+    check_line="$(printf '%s\n' "$mnt_output" | awk '!/autofs/ {print; exit}')"
     if [ -z "$check_line" ]; then
       # Only autofs — allow, but skip strict compare
       log_debug "autofs detected; skipping strict remote/fstype compare"
@@ -81,7 +93,7 @@ do_check() {
       log_debug "File not readable by $ZBX_USER (direct)"; echo 1; exit 0
     fi
   else
-    if ! sudo -u "$ZBX_USER" test -r "$CSV_EXPORT" 2>/dev/null; then
+    if ! sudo -n -u "$ZBX_USER" test -r "$CSV_EXPORT" 2>/dev/null; then
       # Fallback: try direct read (sudoers may not be configured)
       if ! test -r "$CSV_EXPORT"; then
         log_debug "File not readable by $ZBX_USER"; echo 1; exit 0
@@ -106,12 +118,33 @@ do_check() {
 }
 
 ###############################################################################
+# JSON-Helfer
+###############################################################################
+# awk-Funktion, die einen Wert JSON-sicher macht. Wird in do_json und
+# do_discovery eingebettet. Vorher wurde nur " entfernt – ein Backslash
+# (z. B. "DOMAIN\\PC01" bei Windows-Geräten) blieb stehen und machte das
+# gesamte JSON ungültig, womit alle abhängigen Items und die komplette LLD
+# ausfielen, nicht nur das betroffene Gerät.
+JSON_ESCAPE_FN='
+function jesc(s) {
+  gsub(/\\/, "\\\\", s)   # Backslash zuerst!
+  gsub(/"/,  "\\\"", s)
+  gsub(/\t/, "\\t", s)
+  gsub(/\r/, "\\r", s)
+  gsub(/\n/, "\\n", s)
+  gsub(/[\000-\037]/, "", s)  # restliche Steuerzeichen verwerfen
+  return s
+}'
+
+###############################################################################
 # discovery — LLD JSON
 ###############################################################################
 do_discovery() {
   [ -r "$CSV_EXPORT" ] || die "CSV not readable: $CSV_EXPORT"
-  awk -F',' 'NR>1 && $1!="" {
-    host=$2; gsub(/"/, "", host)
+  awk -F',' "$JSON_ESCAPE_FN"'
+  NR>1 && $1!="" && seen[$1]++ {next}
+  NR>1 && $1!="" {
+    host=jesc($2)
     if(c++) printf ","
     printf "{\"{#DEVICEID}\":\"%s\",\"{#HOSTNAME}\":\"%s\"}", $1, host
   } BEGIN{printf "{\"data\":["} END{printf "]}\n"}' "$CSV_EXPORT"
@@ -122,8 +155,10 @@ do_discovery() {
 ###############################################################################
 do_json() {
   [ -r "$CSV_EXPORT" ] || die "CSV not readable: $CSV_EXPORT"
-  awk -F',' -v now="$NOW" 'NR>1 && $1!="" {
-    did=$1; host=$2; gsub(/"/, "", host); status=$3+0; bytes=$4+0; dur=$5+0; ts=$6+0
+  awk -F',' -v now="$NOW" "$JSON_ESCAPE_FN"'
+  NR>1 && $1!="" && seen[$1]++ {next}
+  NR>1 && $1!="" {
+    did=$1+0; host=jesc($2); status=$3+0; bytes=$4+0; dur=$5+0; ts=$6+0
     lss = (NF>=7 && $7+0 > 0) ? $7+0 : 0
     lsa = (lss > 0) ? (now - lss) : 2147483647
 
@@ -134,12 +169,15 @@ do_json() {
 }
 
 ###############################################################################
-# Per-device subcommands (legacy, still used by abb-enh.sh)
+# Per-device subcommands
+# Not used by the template (which derives everything from the JSON master) nor
+# by abb-enh.sh (which reads the CSV directly). Kept for ad-hoc/manual items.
 ###############################################################################
-do_status()          { csv_field "$CSV_EXPORT" "$1" 3; }
-do_bytes()           { csv_field "$CSV_EXPORT" "$1" 4; }
-do_duration()        { csv_field "$CSV_EXPORT" "$1" 5; }
+do_status()          { require_csv; csv_field "$CSV_EXPORT" "$1" 3; }
+do_bytes()           { require_csv; csv_field "$CSV_EXPORT" "$1" 4; }
+do_duration()        { require_csv; csv_field "$CSV_EXPORT" "$1" 5; }
 do_lastsuccess_age() {
+  require_csv
   local lss
   lss="$(csv_field "$CSV_EXPORT" "$1" 7)"
   if [ -z "$lss" ] || [ "$lss" = "0" ]; then
@@ -153,7 +191,8 @@ do_lastsuccess_age() {
 # Global subcommands
 ###############################################################################
 do_device_count() {
-  awk -F',' 'NR>1 && $1!=""{c++} END{print c+0}' "$CSV_EXPORT"
+  require_csv
+  awk -F',' 'NR>1 && $1!="" && seen[$1]++ {next} NR>1 && $1!=""{c++} END{print c+0}' "$CSV_EXPORT"
 }
 do_success_today() {
   [ -r "$CSV_STATS" ] || { echo 0; return; }
@@ -168,30 +207,28 @@ do_failed_today() {
   echo "${v:-0}"
 }
 do_failed_count() {
-  awk -F',' 'NR>1 && ($3+0)==4{c++} END{print c+0}' "$CSV_EXPORT"
+  require_csv
+  awk -F',' 'NR>1 && $1!="" && seen[$1]++ {next} NR>1 && ($3+0)==4{c++} END{print c+0}' "$CSV_EXPORT"
 }
 do_warn_count() {
-  awk -F',' 'NR>1 && ($3+0)==5{c++} END{print c+0}' "$CSV_EXPORT"
+  require_csv
+  awk -F',' 'NR>1 && $1!="" && seen[$1]++ {next} NR>1 && ($3+0)==5{c++} END{print c+0}' "$CSV_EXPORT"
 }
 do_notok_count() {
-  awk -F',' 'NR>1 && (($3+0)==4||($3+0)==5){c++} END{print c+0}' "$CSV_EXPORT"
+  require_csv
+  awk -F',' 'NR>1 && $1!="" && seen[$1]++ {next} NR>1 && (($3+0)==4||($3+0)==5){c++} END{print c+0}' "$CSV_EXPORT"
 }
 do_notok_list() {
-  awk -F',' 'NR>1 && (($3+0)==4||($3+0)==5){h=$2; gsub(/"/, "", h); printf "%s%s",sep,h; sep=","} END{print ""}' "$CSV_EXPORT"
+  require_csv
+  awk -F',' 'NR>1 && $1!="" && seen[$1]++ {next} NR>1 && (($3+0)==4||($3+0)==5){h=$2; gsub(/"/, "", h); printf "%s%s",sep,h; sep=","} END{print ""}' "$CSV_EXPORT"
 }
 do_failed_list() {
-  awk -F',' 'NR>1 && ($3+0)==4{h=$2; gsub(/"/, "", h); printf "%s%s",sep,h; sep=","} END{print ""}' "$CSV_EXPORT"
+  require_csv
+  awk -F',' 'NR>1 && $1!="" && seen[$1]++ {next} NR>1 && ($3+0)==4{h=$2; gsub(/"/, "", h); printf "%s%s",sep,h; sep=","} END{print ""}' "$CSV_EXPORT"
 }
 do_sum_bytes() {
-  awk -F',' 'NR>1{s+=$4+0} END{printf "%.0f\n",s}' "$CSV_EXPORT"
-}
-do_sum_repo_bytes() {
-  # Placeholder: ABB doesn't expose repo size in device_result_table
-  echo 0
-}
-do_repo_bytes() {
-  # Placeholder per device
-  echo 0
+  require_csv
+  awk -F',' 'NR>1 && $1!="" && seen[$1]++ {next} NR>1{s+=$4+0} END{printf "%.0f\n",s}' "$CSV_EXPORT"
 }
 
 ###############################################################################
@@ -208,7 +245,6 @@ case "$CMD" in
   bytes)             do_bytes "${1:?device_id required}" ;;
   duration)          do_duration "${1:?device_id required}" ;;
   lastsuccess_age)   do_lastsuccess_age "${1:?device_id required}" ;;
-  repo_bytes)        do_repo_bytes ;;
   device_count)      do_device_count ;;
   success_today)     do_success_today ;;
   failed_today)      do_failed_today ;;
@@ -218,6 +254,5 @@ case "$CMD" in
   notok_list)        do_notok_list ;;
   failed_list)       do_failed_list ;;
   sum_bytes)         do_sum_bytes ;;
-  sum_repo_bytes)    do_sum_repo_bytes ;;
-  *)                 die "Unknown command: $CMD. Usage: $0 {check|discovery|json|status|bytes|duration|...} [args]" ;;
+  *)                 die "Unknown command: $CMD. Usage: $0 {check|discovery|json|status|bytes|duration|lastsuccess_age|device_count|success_today|failed_today|failed_count|warn_count|notok_count|notok_list|failed_list|sum_bytes} [args]" ;;
 esac

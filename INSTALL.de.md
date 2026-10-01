@@ -205,6 +205,7 @@ Host → **Makros** → **Geerbte und Host-Makros** → nach Bedarf überschreib
 | Discovery findet keine Geräte | JSON-Master leer | Erst JSON-Item reparieren |
 | Alle Geräte „Unknown" (99) | DEVICEID stimmt nicht | CSV-Format prüfen |
 | Template-Import schlägt fehl | Zabbix zu alt | 6.4+ mit JS-Preprocessing erforderlich |
+| Export läuft nur ~1 h/Tag, dann CSV veraltet (`check` wird „Problem") | DSM-Aufgabe: „Letzte Ausführungszeit" zu früh gesetzt (z. B. `00:55`) → Export stoppt nach dem Fenster, 23 h still | Im Aufgabenplaner → Aufgabe bearbeiten → Zeitplan: **„Letzte Ausführungszeit" auf `23:55`** (Start `00:00`, alle 5 Min) |
 
 ---
 
