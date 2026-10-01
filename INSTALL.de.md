@@ -78,6 +78,10 @@ Erwartet: 7 Spalten inklusive `LAST_SUCCESS_TS`.
 /volume1/monitoring/scripts/abb_export.sh
 ```
 
+Der Zeitplan-Tab sollte so aussehen — wichtig: **Letzte Ausführungszeit `23:55`** (nicht früher, sonst läuft der Export nur bis dahin und steht den Rest des Tages still):
+
+![DSM-Aufgabenplaner – Zeitplan korrekt: täglich, alle 5 Minuten, Letzte Ausführungszeit 23:55](docs/images/dsm-schedule-correct.png)
+
 #### Aufgabe 2: ABB Tageszusammenfassung (einmal täglich)
 
 1. **Erstellen → Geplante Aufgabe → Benutzerdefiniertes Skript**

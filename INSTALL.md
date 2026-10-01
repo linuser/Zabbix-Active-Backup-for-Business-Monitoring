@@ -78,6 +78,10 @@ Expected: 7 columns including `LAST_SUCCESS_TS`.
 /volume1/monitoring/scripts/abb_export.sh
 ```
 
+The Schedule tab should look like this — important: **Last run time `23:55`** (not earlier, otherwise the export only runs until then and sits idle the rest of the day):
+
+![DSM Task Scheduler – Schedule set correctly: daily, every 5 minutes, Last run time 23:55](docs/images/dsm-schedule-correct.png)
+
 #### Task 2: ABB Daily Summary (once per day)
 
 1. **Create → Scheduled Task → User-defined Script**
