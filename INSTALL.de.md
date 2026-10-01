@@ -197,6 +197,10 @@ Host → **Makros** → **Geerbte und Host-Makros** → nach Bedarf überschreib
 4. Nach ca. 1 Stunde läuft die Discovery und Geräte-Items erscheinen
 5. **Dashboards → ABB Monitoring** für die Übersicht
 
+Unter **Monitoring → Aktuelle Daten** erscheinen dann die ABB-Items (Übersicht, Statistik, Service-Status) sowie die per Discovery erkannten per-Gerät-Items:
+
+![Zabbix – Aktuelle Daten mit den ABB-Items](docs/images/zabbix-latest-data.png)
+
 Die ABB-Aufgaben selbst (DSM → Active Backup for Business → Aktivitäten) zeigen den Status, den dieses Monitoring erfasst und nach Zabbix bringt — z. B. „Teilweise abgeschlossen":
 
 ![Active Backup for Business – Aufgabenverlauf mit Backup-Status](docs/images/dsm-abb-task-history.png)

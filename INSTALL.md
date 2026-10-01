@@ -197,6 +197,10 @@ Host → **Macros** → **Inherited and host macros** → override as needed (se
 4. After ~1 hour, LLD runs and per-device items appear
 5. **Dashboards → ABB Monitoring** for the overview
 
+Under **Monitoring → Latest data** the ABB items appear (overview, statistics, service status) along with the per-device items found by discovery:
+
+![Zabbix – Latest data with the ABB items](docs/images/zabbix-latest-data.png)
+
 The ABB tasks themselves (DSM → Active Backup for Business → Activities) show the status this monitoring captures and forwards to Zabbix — e.g. "Partially completed":
 
 ![Active Backup for Business – task history with backup status](docs/images/dsm-abb-task-history.png)
