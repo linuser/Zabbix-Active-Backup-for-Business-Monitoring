@@ -1,5 +1,18 @@
 # Changelog
 
+## v3.6 (2026-10-02)
+
+Gefunden in der Live-Installation: rund 1000 Alarm-Mails am Tag, fast alle für Geräte, die erfolgreich gesichert waren.
+
+### Zabbix-Vorlage
+
+- **Leerer Export löst keinen Alarm mehr aus.** Die NAS ersetzt die CSV alle paar Minuten per `mv`. Liest der Proxy über NFS genau in diesem Moment, bekommt er eine CSV ohne Datenzeilen. Das Master-Item lieferte dann `{"devices":[]}`, und jedes abhängige Item fiel auf seinen Ersatzwert zurück: `last_success_age = 2147483647` („keine Sicherung seit 68 Jahren“), `status = 99`. Beim nächsten Abruf war alles wieder da. Ergebnis: HIGH-Alarm und Entwarnung für jedes Gerät, etwa 20-mal am Tag. Zusätzlich hält die Discovery die Geräte bei leerem Export für verschwunden. Behoben an zwei Stellen:
+  - Das Master-Item `abb.sh[json]` verwirft eine leere Geräteliste per JavaScript-Vorverarbeitung. Abhängige Items und Discovery sehen den Wert gar nicht erst.
+  - Die abhängigen Items je Gerät werfen einen Fehler, wenn das Gerät im JSON fehlt, statt einen Ersatzwert zu melden. Ein fehlendes Gerät ist kein Messwert.
+- **Alarme je Gerät erst bei zwei Werten in Folge.** „backup ERROR“ und „no successful backup“ werten jetzt `min(…,#2)` bzw. `min`/`max` über die letzten zwei Werte aus statt `last()`. Ein einzelner Ausreißer reicht nicht mehr. Bei 5 Minuten Abfrageintervall verzögert das einen echten Alarm um höchstens 5 Minuten.
+
+Vorlagen-Version 7.4-36. Beim Re-Import einer bestehenden Vorlage werden Vorverarbeitung und Ausdrücke übernommen; Host-Makros bleiben unberührt.
+
 ## v3.5 (2026-09-19)
 
 Fünfte Review-Runde — gegen die Live-Installation (Zabbix-Proxy, NFS auf die NAS) getestet, nicht nur gelesen.

@@ -23,10 +23,11 @@ Requirements:
 
 Status codes: 1=Running 2=Success 3=Aborted 4=Error 5=Warning 8=Partial
 
-v3.0 — Dependent discovery, JS preprocessing, graph prototypes, backup-window awareness.</description>
+v3.0 — Dependent discovery, JS preprocessing, graph prototypes, backup-window awareness.
+v3.6 — Empty/partial exports no longer cause alert flapping.</description>
             <vendor>
                 <name>Alexander Fox | PlaNet Fox</name>
-                <version>7.4-30</version>
+                <version>7.4-36</version>
             </vendor>
             <groups>
                 <group>
@@ -44,7 +45,17 @@ v3.0 — Dependent discovery, JS preprocessing, graph prototypes, backup-window 
                     <history>0</history>
                     <trends>0</trends>
                     <value_type>TEXT</value_type>
-                    <description>Master item: all device data as JSON. All dependent items and discovery derive from this.</description>
+                    <description>Master item: all device data as JSON. All dependent items and discovery derive from this. An empty device list (CSV read while the NAS swaps the file) is rejected, so neither the dependent items nor the discovery ever see it.</description>
+                    <preprocessing>
+                        <step>
+                            <type>JAVASCRIPT</type>
+                            <parameters>
+                                <parameter>var d = JSON.parse(value);
+if (!d.devices || d.devices.length === 0) throw "ABB export empty or being replaced - value discarded";
+return value;</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
                     <tags>
                         <tag>
                             <tag>Application</tag>
@@ -565,7 +576,7 @@ v3.0 — Dependent discovery, JS preprocessing, graph prototypes, backup-window 
                                 <step>
                                     <type>JAVASCRIPT</type>
                                     <parameters>
-                                        <parameter>var d = JSON.parse(value); var r = d.devices.filter(function(e){return e.id==={#DEVICEID}}); return r.length &gt; 0 ? r[0].status : 99;</parameter>
+                                        <parameter>var d = JSON.parse(value); var r = d.devices.filter(function(e){return e.id==={#DEVICEID}}); if (r.length === 0) throw "Geraet {#DEVICEID} fehlt im Export"; return r[0].status;</parameter>
                                     </parameters>
                                 </step>
                                 <step>
@@ -581,7 +592,7 @@ v3.0 — Dependent discovery, JS preprocessing, graph prototypes, backup-window 
                             <trigger_prototypes>
                                 <trigger_prototype>
                                     <uuid>fae1cfd056344cd99579da2ca11590e9</uuid>
-                                    <expression>last(/Synology ABB External SingleScript/abb.device.status[{#DEVICEID}])=4</expression>
+                                    <expression>min(/Synology ABB External SingleScript/abb.device.status[{#DEVICEID}],#2)=4 and max(/Synology ABB External SingleScript/abb.device.status[{#DEVICEID}],#2)=4</expression>
                                     <recovery_mode>RECOVERY_EXPRESSION</recovery_mode>
                                     <recovery_expression>last(/Synology ABB External SingleScript/abb.device.status[{#DEVICEID}])=2 or last(/Synology ABB External SingleScript/abb.device.status[{#DEVICEID}])=8</recovery_expression>
                                     <name>ABB [{#HOSTNAME}]: backup ERROR</name>
@@ -632,7 +643,7 @@ v3.0 — Dependent discovery, JS preprocessing, graph prototypes, backup-window 
                                 <step>
                                     <type>JAVASCRIPT</type>
                                     <parameters>
-                                        <parameter>var d = JSON.parse(value); var r = d.devices.filter(function(e){return e.id==={#DEVICEID}}); return r.length &gt; 0 ? r[0].bytes : 0;</parameter>
+                                        <parameter>var d = JSON.parse(value); var r = d.devices.filter(function(e){return e.id==={#DEVICEID}}); if (r.length === 0) throw "Geraet {#DEVICEID} fehlt im Export"; return r[0].bytes;</parameter>
                                     </parameters>
                                 </step>
                                 <step>
@@ -659,7 +670,7 @@ v3.0 — Dependent discovery, JS preprocessing, graph prototypes, backup-window 
                                 <step>
                                     <type>JAVASCRIPT</type>
                                     <parameters>
-                                        <parameter>var d = JSON.parse(value); var r = d.devices.filter(function(e){return e.id==={#DEVICEID}}); return r.length &gt; 0 ? r[0].duration : 0;</parameter>
+                                        <parameter>var d = JSON.parse(value); var r = d.devices.filter(function(e){return e.id==={#DEVICEID}}); if (r.length === 0) throw "Geraet {#DEVICEID} fehlt im Export"; return r[0].duration;</parameter>
                                     </parameters>
                                 </step>
                                 <step>
@@ -708,7 +719,7 @@ v3.0 — Dependent discovery, JS preprocessing, graph prototypes, backup-window 
                                 <step>
                                     <type>JAVASCRIPT</type>
                                     <parameters>
-                                        <parameter>var d = JSON.parse(value); var r = d.devices.filter(function(e){return e.id==={#DEVICEID}}); return r.length &gt; 0 ? r[0].last_success_age : 2147483647;</parameter>
+                                        <parameter>var d = JSON.parse(value); var r = d.devices.filter(function(e){return e.id==={#DEVICEID}}); if (r.length === 0) throw "Geraet {#DEVICEID} fehlt im Export"; return r[0].last_success_age;</parameter>
                                     </parameters>
                                 </step>
                             </preprocessing>
@@ -718,7 +729,7 @@ v3.0 — Dependent discovery, JS preprocessing, graph prototypes, backup-window 
                             <trigger_prototypes>
                                 <trigger_prototype>
                                     <uuid>ef553018c8684fb897aea7f78715a11f</uuid>
-                                    <expression>last(/Synology ABB External SingleScript/abb.device.lastsuccess_age[{#DEVICEID}])&gt;={$ABB.BACKUP.MAX.AGE} and last(/Synology ABB External SingleScript/abb.device.status[{#DEVICEID}])&lt;&gt;1</expression>
+                                    <expression>min(/Synology ABB External SingleScript/abb.device.lastsuccess_age[{#DEVICEID}],#2)&gt;={$ABB.BACKUP.MAX.AGE} and last(/Synology ABB External SingleScript/abb.device.status[{#DEVICEID}])&lt;&gt;1</expression>
                                     <recovery_mode>RECOVERY_EXPRESSION</recovery_mode>
                                     <recovery_expression>last(/Synology ABB External SingleScript/abb.device.lastsuccess_age[{#DEVICEID}])&lt;{$ABB.BACKUP.MAX.AGE}</recovery_expression>
                                     <name>ABB [{#HOSTNAME}]: no successful backup for {ITEM.LASTVALUE}</name>
